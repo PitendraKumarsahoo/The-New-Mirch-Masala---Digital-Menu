@@ -14,7 +14,9 @@ import { ComingSoonModal } from './components/ComingSoonModal';
 import { MenuLoadingSkeleton } from './components/MenuLoadingSkeleton';
 import { MenuErrorState } from './components/MenuErrorState';
 import { LoyaltyPage } from './components/loyalty/LoyaltyPage';
-import { Clock, Search, CheckCircle2, ChevronUp, Database, RefreshCw, ChevronLeft, Gift } from 'lucide-react';
+import { ReviewPage } from './components/reviews/ReviewPage';
+import { AdminDashboard } from './admin/AdminDashboard';
+import { Clock, Search, CheckCircle2, ChevronUp, Database, RefreshCw, ChevronLeft, Gift, Star, ShieldCheck } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 export default function App() {
@@ -32,6 +34,22 @@ export default function App() {
   const [selectedFoodItem, setSelectedFoodItem] = useState<MenuItem | null>(null);
   const [activeNavTab, setActiveNavTab] = useState<BottomNavTab>('menu');
   const [comingSoonTab, setComingSoonTab] = useState<BottomNavTab | null>(null);
+
+  // Path tracking for dedicated /admin route
+  const [currentPath, setCurrentPath] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return window.location.pathname;
+    }
+    return '/';
+  });
+
+  useEffect(() => {
+    const handleLocationChange = () => {
+      setCurrentPath(window.location.pathname);
+    };
+    window.addEventListener('popstate', handleLocationChange);
+    return () => window.removeEventListener('popstate', handleLocationChange);
+  }, []);
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [scrollProgress, setScrollProgress] = useState(0);
@@ -253,10 +271,18 @@ export default function App() {
     } else if (tab === 'rewards') {
       setActiveNavTab('rewards');
       window.scrollTo({ top: 0, behavior: 'smooth' });
+    } else if (tab === 'review') {
+      setActiveNavTab('review');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     } else {
       setComingSoonTab(tab);
     }
   };
+
+  // Phase 6: Dedicated Owner Dashboard Route (/admin)
+  if (currentPath.startsWith('/admin')) {
+    return <AdminDashboard />;
+  }
 
   return (
     <div
@@ -315,6 +341,12 @@ export default function App() {
 
               <LoyaltyPage onBackToMenu={() => setActiveNavTab('menu')} />
             </div>
+          ) : activeNavTab === 'review' ? (
+            /* Phase 5: Google Review Integration & One-Click Review Flow */
+            <ReviewPage
+              onBackToMenu={() => setActiveNavTab('menu')}
+              restaurantId={restaurantInfo.restaurantId || 'mirch-masala-01'}
+            />
           ) : isLoading ? (
             /* Slow loading skeleton */
             <MenuLoadingSkeleton />
@@ -418,7 +450,34 @@ export default function App() {
                   onResetSearch={handleResetSearch}
                   isLoading={isCategoryLoading}
                 />
+
+                {/* Rate Your Experience Banner */}
+                <div className="px-4 pt-2 pb-6">
+                  <div className="p-4 rounded-3xl bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200/80 shadow-xs flex items-center justify-between gap-3">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-0.5 text-amber-500">
+                        {Array.from({ length: 5 }).map((_, i) => (
+                          <Star key={i} className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
+                        ))}
+                      </div>
+                      <h4 className="text-xs font-bold text-stone-900">Enjoyed your food?</h4>
+                      <p className="text-[11px] text-stone-500">Rate your experience & post to Google</p>
+                    </div>
+                    <button
+                      type="button"
+                      id="btn-banner-rate-us"
+                      onClick={() => {
+                        setActiveNavTab('review');
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                      }}
+                      className="px-3.5 py-2 rounded-xl bg-stone-900 hover:bg-black text-white text-xs font-bold shrink-0 transition-colors shadow-xs cursor-pointer"
+                    >
+                      Rate Us
+                    </button>
+                  </div>
+                </div>
               </main>
+
             </div>
           )}
 
@@ -464,38 +523,50 @@ export default function App() {
 
         {/* Desktop Side Info Panel */}
         <div className="ml-12 hidden lg:block max-w-md">
-          <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-orange-600 text-white text-[10px] font-bold rounded-full mb-4 uppercase tracking-widest shadow-md shadow-orange-600/20">
-            <Gift className="w-3 h-3" />
-            <span>Phase 4 — Loyalty & Menu Sync</span>
+          <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-600 text-white text-[10px] font-bold rounded-full mb-4 uppercase tracking-widest shadow-md shadow-amber-600/20">
+            <Star className="w-3 h-3 fill-white" />
+            <span>Phase 5 — Google Review & Loyalty Sync</span>
           </div>
           <h2 className="text-4xl font-black text-white mb-3 leading-tight tracking-tight">
-            Digital Menu &<br />Customer Loyalty
+            Digital Menu &<br />Google Reviews
           </h2>
           <p className="text-slate-400 text-sm mb-6 leading-relaxed">
-            Connected to Google Sheets via Google Apps Script for <strong className="text-slate-200">{restaurantInfo.name}</strong> in {restaurantInfo.location}. Features dynamic menu syncing plus a verified customer rewards program.
+            Connected to Google Sheets via Google Apps Script for <strong className="text-slate-200">{restaurantInfo.name}</strong> in {restaurantInfo.location}. Features dynamic menu syncing, 10-strike customer rewards, and a compliant one-click Google Review experience.
           </p>
 
           <div className="space-y-4">
             <div className="flex items-start gap-3.5">
               <div className="w-9 h-9 rounded-xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center shrink-0 text-amber-400">
-                <Gift className="w-4 h-4" />
+                <Star className="w-4 h-4 fill-amber-400" />
               </div>
               <div>
-                <h4 className="text-white font-bold text-sm">Customer Loyalty & Rewards</h4>
+                <h4 className="text-white font-bold text-sm">One-Click Google Reviews</h4>
                 <p className="text-slate-400 text-xs">
-                  5 visits earn ₹50 OFF. Maximum 1 verified visit per customer per day (Asia/Kolkata), verified via staff PIN terminal.
+                  Rate 1–5 stars, select highlights, write feedback, and seamlessly post to the official Google Business Profile review page.
                 </p>
               </div>
             </div>
 
             <div className="flex items-start gap-3.5">
               <div className="w-9 h-9 rounded-xl bg-orange-500/20 border border-orange-500/30 flex items-center justify-center shrink-0 text-orange-400">
+                <Gift className="w-4 h-4" />
+              </div>
+              <div>
+                <h4 className="text-white font-bold text-sm">Customer Loyalty & Rewards</h4>
+                <p className="text-slate-400 text-xs">
+                  10-visit stamp cycle with staff PIN verification terminal and anti-fraud daily visit limits.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-start gap-3.5">
+              <div className="w-9 h-9 rounded-xl bg-blue-500/20 border border-blue-500/30 flex items-center justify-center shrink-0 text-blue-400">
                 <Database className="w-4 h-4" />
               </div>
               <div>
-                <h4 className="text-white font-bold text-sm">Self-Healing Google Sheets Sync</h4>
+                <h4 className="text-white font-bold text-sm">Google Sheets Architecture</h4>
                 <p className="text-slate-400 text-xs">
-                  Menu items, prices, full/half pricing, and availability sync directly with spreadsheet tabs: <code className="text-orange-300 font-mono text-[10px]">Menu</code>, <code className="text-orange-300 font-mono text-[10px]">Customers</code>, <code className="text-orange-300 font-mono text-[10px]">Visits</code>, and <code className="text-orange-300 font-mono text-[10px]">RewardRedemptions</code>.
+                  Synchronized tabs: <code className="text-orange-300 font-mono text-[10px]">Menu</code>, <code className="text-orange-300 font-mono text-[10px]">Restaurant</code>, <code className="text-orange-300 font-mono text-[10px]">Reviews</code>, <code className="text-orange-300 font-mono text-[10px]">Customers</code>, and <code className="text-orange-300 font-mono text-[10px]">Visits</code>.
                 </p>
               </div>
             </div>
@@ -506,13 +577,39 @@ export default function App() {
               <div className="w-8 h-8 rounded-full bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
                 <CheckCircle2 className="w-4 h-4" />
               </div>
-              <p className="text-white font-bold text-xs uppercase tracking-wider">Phase 4 Active Architecture</p>
+              <p className="text-white font-bold text-xs uppercase tracking-wider">Phase 5 Compliant Flow</p>
             </div>
             <p className="text-slate-400 text-xs leading-relaxed">
-              Google Apps Script acts as the secure backend API layer. Customers can browse the digital menu and track their loyalty stamps, while staff securely verify daily visits without exposing any Google credentials.
+              Customer reviews are stored internally with clear status tracking (<code className="text-emerald-300 font-mono text-[10px]">submitted_internal</code> and <code className="text-blue-300 font-mono text-[10px]">google_redirected</code>). The diner remains in full control of their Google review submission.
             </p>
           </div>
+
+          {/* Phase 6 Owner Portal Access (Desktop Preview Only) */}
+          <div className="mt-4 p-4 bg-stone-900/90 rounded-2xl border border-amber-500/30 flex items-center justify-between">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-lg bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400">
+                <ShieldCheck className="w-4 h-4" />
+              </div>
+              <div>
+                <p className="text-white text-xs font-bold">Restaurant Owner Portal</p>
+                <p className="text-stone-400 text-[11px]">Phase 6 Admin Operations (/admin)</p>
+              </div>
+            </div>
+            <a
+              href="/admin"
+              id="desktop-open-admin-link"
+              onClick={(e) => {
+                e.preventDefault();
+                window.history.pushState({}, '', '/admin');
+                window.dispatchEvent(new PopStateEvent('popstate'));
+              }}
+              className="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-stone-950 font-bold text-xs rounded-xl shadow-md shadow-amber-500/20 transition-all cursor-pointer"
+            >
+              Open /admin
+            </a>
+          </div>
         </div>
+
       </div>
     </div>
   );

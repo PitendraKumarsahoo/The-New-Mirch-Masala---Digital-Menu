@@ -66,16 +66,20 @@ export interface RewardTier {
 
 export interface Customer {
   customerId: string;
-  name: string;
-  phone: string;
-  password?: string;
   restaurantId: string;
+  name: string;
+  mobile: string;
+  phone: string; // normalized 10-digit mobile number alias
+  password?: string;
   createdAt: string;
   totalVisits: number;
+  currentVisits?: number;
   availableRewards: number;
   redeemedRewardIds?: string[];
+  lastVisitDate?: string;
   lastVisitAt?: string;
-  status: 'ACTIVE' | 'INACTIVE';
+  isActive: boolean;
+  status?: 'ACTIVE' | 'INACTIVE';
 }
 
 export interface Visit {
@@ -88,14 +92,27 @@ export interface Visit {
   status: 'PENDING' | 'VERIFIED' | 'REJECTED';
 }
 
+export interface LoyaltyTransaction {
+  transactionId: string;
+  restaurantId: string;
+  customerId: string;
+  type: 'VISIT' | 'REWARD_REDEEM';
+  visitDate: string;
+  verifiedAt: string;
+  verifiedBy: string;
+  rewardId?: string;
+  notes?: string;
+}
+
 export interface Reward {
   rewardId: string;
-  customerId: string;
   restaurantId: string;
   rewardName: string;
-  strikeRequired?: number;
-  unlockedAt: string;
-  status: 'AVAILABLE' | 'REDEEMED' | 'EXPIRED';
+  description: string;
+  visitTarget: number;
+  status: 'ACTIVE' | 'AVAILABLE' | 'REDEEMED' | 'EXPIRED';
+  createdAt?: string;
+  unlockedAt?: string;
 }
 
 export interface RewardRedemption {
@@ -109,25 +126,29 @@ export interface RewardRedemption {
 }
 
 export interface LoyaltyConfig {
-  visitsRequired: number; // 10 visits/strikes for full cycle
+  rewardVisitTarget?: number;
+  visitsRequired: number; // 10 visits for reward
   rewardName: string;
   rewardDescription: string;
-  rewardTiers: RewardTier[];
+  rewardTiers?: RewardTier[];
 }
 
 export interface LoyaltyStatus {
   customer: Customer;
   totalVisits: number;
+  currentVisits: number;
+  progressVisits?: number;
   visitsRequired: number;
-  progressVisits: number; // 1 to 10
   remainingVisits: number;
   availableRewards: number;
-  unlockedTiers: RewardTier[];
-  nextRewardTier?: RewardTier | null;
-  remainingForNextReward: number;
   isRewardUnlocked: boolean;
+  rewardName: string;
+  rewardDescription: string;
   todayVisitStatus: 'NOT_RECORDED' | 'VERIFIED' | 'PENDING';
   lastVisitDateFormatted?: string;
+  unlockedTiers?: RewardTier[];
+  nextRewardTier?: RewardTier | null;
+  remainingForNextReward?: number;
   config: LoyaltyConfig;
 }
 
@@ -145,4 +166,11 @@ export interface RestaurantInfo {
   closingTime?: string;
   googleReviewUrl?: string;
   logo?: string;
+  googleBusinessProfileConnected?: boolean;
+  googleBusinessProfileAccountId?: string;
+  googleBusinessProfileLocationId?: string;
 }
+
+export * from './types/review';
+export * from './types/googleBusinessProfile';
+

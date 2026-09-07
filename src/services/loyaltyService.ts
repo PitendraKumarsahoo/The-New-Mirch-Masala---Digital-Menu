@@ -107,40 +107,49 @@ function getInitialSeedDB(): LocalLoyaltyDB {
     {
       customerId: 'CUS-AMIT88',
       name: 'Amit Sharma',
+      mobile: '9876543210',
       phone: '9876543210',
       password: 'password123',
       restaurantId: 'mirch-masala-01',
       createdAt: new Date(Date.now() - 30 * 86400000).toISOString(),
       totalVisits: 4, // 4 strikes => 1 strike away from 5th strike (₹50 OFF!)
+      currentVisits: 4,
       availableRewards: 0,
       redeemedRewardIds: [],
       lastVisitAt: `${yesterdayStr} 08:30 PM`,
+      isActive: true,
       status: 'ACTIVE',
     },
     {
       customerId: 'CUS-PRIYA77',
       name: 'Priya Patel',
+      mobile: '9123456780',
       phone: '9123456780',
       password: 'password123',
       restaurantId: 'mirch-masala-01',
       createdAt: new Date(Date.now() - 40 * 86400000).toISOString(),
       totalVisits: 6, // 6 strikes => 5th strike reward unlocked, 1 strike away from 7th strike (20% OFF!)
+      currentVisits: 6,
       availableRewards: 1,
       redeemedRewardIds: [],
       lastVisitAt: `${yesterdayStr} 01:15 PM`,
+      isActive: true,
       status: 'ACTIVE',
     },
     {
       customerId: 'CUS-ROHAN99',
       name: 'Rohan Gupta',
+      mobile: '9988776655',
       phone: '9988776655',
       password: 'password123',
       restaurantId: 'mirch-masala-01',
       createdAt: new Date(Date.now() - 60 * 86400000).toISOString(),
       totalVisits: 9, // 9 strikes => 1 strike away from 10th strike (40% OFF / Free Dish!)
+      currentVisits: 9,
       availableRewards: 2,
       redeemedRewardIds: [],
       lastVisitAt: `${twoDaysAgoStr} 09:10 PM`,
+      isActive: true,
       status: 'ACTIVE',
     },
   ];
@@ -271,6 +280,7 @@ export function computeLoyaltyObject(customer: Customer, visits: Visit[]): Loyal
   return {
     customer,
     totalVisits,
+    currentVisits: currentCycleStrikes,
     visitsRequired,
     progressVisits: currentCycleStrikes,
     remainingVisits: Math.max(0, visitsRequired - currentCycleStrikes),
@@ -279,6 +289,8 @@ export function computeLoyaltyObject(customer: Customer, visits: Visit[]): Loyal
     nextRewardTier,
     remainingForNextReward,
     isRewardUnlocked: unlockedTiers.length > 0,
+    rewardName: LOYALTY_CONFIG.rewardName,
+    rewardDescription: LOYALTY_CONFIG.rewardDescription,
     todayVisitStatus: todayStatus,
     lastVisitDateFormatted: customer.lastVisitAt || undefined,
     config: LOYALTY_CONFIG,
@@ -372,6 +384,9 @@ export async function registerCustomer(
         );
         const storedCustomer: Customer = {
           ...data.customer,
+          mobile: data.customer.mobile || phone,
+          phone: data.customer.phone || phone,
+          isActive: true,
           password: cleanPassword,
         };
         if (existingIdx >= 0) {
@@ -406,13 +421,16 @@ export async function registerCustomer(
     customer = {
       customerId: `CUS-${randomHex}`,
       name: trimmedName,
+      mobile: phone,
       phone,
       password: cleanPassword,
       restaurantId,
       createdAt: new Date().toISOString(),
       totalVisits: 0,
+      currentVisits: 0,
       availableRewards: 0,
       redeemedRewardIds: [],
+      isActive: true,
       status: 'ACTIVE',
     };
     db.customers.push(customer);
@@ -420,6 +438,8 @@ export async function registerCustomer(
     // Existing customer updating name or setting password
     customer.name = trimmedName;
     customer.password = cleanPassword;
+    customer.mobile = customer.mobile || phone;
+    customer.isActive = true;
   }
   saveLocalDB(db);
 

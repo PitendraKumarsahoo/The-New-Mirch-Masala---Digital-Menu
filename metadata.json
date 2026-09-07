@@ -1,6 +1,6 @@
 {
   "name": "The New Mirch Masala - Digital Menu",
-  "description": "Mobile-first digital restaurant menu and customer loyalty rewards system for The New Mirch Masala in Gunupur, Odisha.",
+  "description": "Mobile-first digital restaurant menu, customer loyalty rewards, Google Reviews system, and Restaurant Owner Admin Dashboard for The New Mirch Masala in Gunupur, Odisha.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

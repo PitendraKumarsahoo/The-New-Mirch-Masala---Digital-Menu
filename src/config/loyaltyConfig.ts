@@ -37,15 +37,20 @@ export const REWARD_TIERS: RewardTier[] = [
 ];
 
 /**
- * LOYALTY CONFIGURATION
- * The New Mirch Masala 10-Strike Milestone Loyalty Journey
+ * LOYALTY RULE CONFIGURATION (Phase 4)
+ * 1 verified restaurant visit = 1 loyalty visit.
+ * Target: 10 verified visits = 1 reward
  */
+export const rewardVisitTarget = 10;
+
 export const LOYALTY_CONFIG: LoyaltyConfig = {
-  visitsRequired: 10, // Full 10-strike journey ladder
-  rewardName: 'Milestone Rewards (₹50 OFF, 20% OFF, 40% OFF / Free Dish)',
-  rewardDescription: 'Earn 1 strike per day when you dine. Unlock rewards at Strike 5, 7, and 10.',
+  rewardVisitTarget,
+  visitsRequired: rewardVisitTarget,
+  rewardName: 'Free Reward',
+  rewardDescription: 'Available after 10 visits',
   rewardTiers: REWARD_TIERS,
 };
 
 export const STAFF_PASSCODE_DEFAULT = 'mirchowner123';
+
 

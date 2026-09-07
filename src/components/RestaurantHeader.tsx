@@ -1,4 +1,4 @@
-import { MapPin, Clock } from 'lucide-react';
+import { MapPin, Clock, Star } from 'lucide-react';
 import { RESTAURANT_INFO } from '../data/menuData';
 import { RestaurantInfo } from '../types';
 
@@ -6,12 +6,17 @@ export type SyncConnectionStatus = 'fresh' | 'cached' | 'fallback';
 
 interface RestaurantHeaderProps {
   onOpenInfoModal?: () => void;
+  onSelectReview?: () => void;
   restaurant?: RestaurantInfo;
   connectionStatus?: SyncConnectionStatus;
+  activeCategory?: string;
+  totalItemsCount?: number;
+  dataSource?: string;
 }
 
 export function RestaurantHeader({
   onOpenInfoModal,
+  onSelectReview,
   restaurant = RESTAURANT_INFO,
   connectionStatus = 'fresh',
 }: RestaurantHeaderProps) {
@@ -38,8 +43,20 @@ export function RestaurantHeader({
           )}
         </div>
 
-        {/* Status & Timings Pill */}
-        <div className="flex items-center gap-2">
+        {/* Status, Timings & Review Pill */}
+        <div className="flex items-center gap-1.5">
+          {onSelectReview && (
+            <button
+              type="button"
+              id="header-rate-experience-btn"
+              onClick={onSelectReview}
+              className="px-2.5 py-1 bg-amber-50 hover:bg-amber-100 text-amber-900 text-[10px] font-bold rounded-full border border-amber-200 uppercase tracking-wider flex items-center gap-1 transition-colors cursor-pointer shadow-2xs"
+              title="Rate your experience"
+            >
+              <Star className="w-3 h-3 fill-amber-500 text-amber-500" />
+              <span>Rate</span>
+            </button>
+          )}
           <div className="px-3 py-1 bg-green-50 text-green-600 text-[10px] font-bold rounded-full border border-green-100 uppercase tracking-wider flex items-center gap-1.5 shadow-2xs">
             <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
             <span>{restaurant.isOpen !== false ? 'Open Now' : 'Closed'}</span>

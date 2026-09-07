@@ -1,6 +1,7 @@
 import { MenuItem, RestaurantInfo } from '../types';
 
 export const RESTAURANT_INFO: RestaurantInfo = {
+  restaurantId: 'mirch-masala-01',
   name: 'The New Mirch Masala',
   subtitle: 'Indian • Chinese • Biryani • Tandoori',
   location: 'Gunupur, Odisha',
@@ -9,6 +10,7 @@ export const RESTAURANT_INFO: RestaurantInfo = {
   isOpen: true,
   timings: '11:00 AM – 10:30 PM',
   phone: '+91 94370 12345',
+  googleReviewUrl: 'https://www.google.com/maps/search/?api=1&query=The+New+Mirch+Masala+Gunupur+Odisha',
 };
 
 export const MENU_ITEMS: MenuItem[] = [

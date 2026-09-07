@@ -1,0 +1,3 @@
+reviewId,restaurantId,customerId,customerName,rating,topics,feedback,createdAt,googleReviewUrl,status
+REV-20260907-001,mirch-masala-01,CUS-AMIT88,Amit Sharma,5,"Great Taste, Fresh Food","The Chicken Biryani and Tandoori Chicken are absolutely incredible. Best food in Gunupur!",2026-09-07T12:30:00.000Z,https://maps.google.com,submitted_internal
+REV-20260907-002,mirch-masala-01,CUS-PRIYA42,Priya Patel,5,"Good Service, Friendly Staff","Wonderful staff and quick service. Delicious Paneer Tikka Masala!",2026-09-07T14:15:00.000Z,https://maps.google.com,google_redirected
