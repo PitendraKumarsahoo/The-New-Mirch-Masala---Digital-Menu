@@ -20,7 +20,8 @@ import {
   normalizePhoneNumber,
   getDemoCustomers,
 } from '../../services/loyaltyService';
-import { findStaffAccount, STAFF_ACCOUNTS, StaffAccount } from '../../config/staffAccounts';
+import { STAFF_METADATA, StaffAccount } from '../../config/staffAccounts';
+import { loginAdmin } from '../../admin/services/adminAuthService';
 import { Customer, LoyaltyStatus } from '../../types';
 
 interface LoyaltyRegistrationProps {
@@ -107,7 +108,7 @@ export const LoyaltyRegistration: React.FC<LoyaltyRegistrationProps> = ({
     }
   };
 
-  const handleStaffSubmit = (e: React.FormEvent) => {
+  const handleStaffSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
 
@@ -123,23 +124,33 @@ export const LoyaltyRegistration: React.FC<LoyaltyRegistrationProps> = ({
       return;
     }
 
-    const matched = findStaffAccount(cleanId, cleanPwd);
-    if (matched) {
-      try {
-        sessionStorage.setItem('mirch_staff_account', JSON.stringify(matched));
-      } catch {
-        // ignore
+    setLoading(true);
+    try {
+      const res = await loginAdmin(cleanId, cleanPwd);
+      if (res.success && res.data?.user) {
+        const u = res.data.user;
+        const meta = STAFF_METADATA.find((m) => m.id === u.userId.toLowerCase());
+        const matched: StaffAccount = {
+          id: u.userId,
+          name: u.name,
+          role: u.role === 'OWNER' ? 'Owner' : u.role === 'MANAGER' ? 'Manager' : 'Staff',
+          title: meta?.title || u.title || 'Staff Member',
+          badgeColor: meta?.badgeColor || 'bg-stone-700 text-white',
+        };
+        onStaffLoginSuccess(matched);
+      } else {
+        setError(res.error || 'Invalid Owner/Staff ID or Password. Please verify your credentials.');
       }
-      onStaffLoginSuccess(matched);
-    } else {
-      setError('Invalid Owner/Staff ID or Password. Please verify your credentials.');
+    } catch {
+      setError('Connection error. Please try again.');
+    } finally {
+      setLoading(false);
     }
   };
 
   // Quick fill staff demo credentials
   const handleQuickFillStaff = (staff: StaffAccount) => {
     setStaffId(staff.id);
-    setStaffPassword(staff.password);
     setError(null);
   };
 
@@ -550,11 +561,11 @@ export const LoyaltyRegistration: React.FC<LoyaltyRegistrationProps> = ({
                   <Users className="w-3.5 h-3.5 text-stone-500" />
                   <span>Preset Accounts (1-Click Fill)</span>
                 </span>
-                <span className="text-[10px] text-stone-400 font-normal">Created for testing</span>
+                <span className="text-[10px] text-stone-400 font-normal">Staff directory</span>
               </div>
 
               <div className="space-y-1.5">
-                {STAFF_ACCOUNTS.map((account) => (
+                {STAFF_METADATA.map((account) => (
                   <button
                     key={account.id}
                     type="button"
@@ -571,11 +582,11 @@ export const LoyaltyRegistration: React.FC<LoyaltyRegistrationProps> = ({
                         </span>
                       </div>
                       <p className="text-[11px] text-stone-500 font-mono mt-0.5">
-                        ID: <span className="font-bold text-stone-800">{account.id}</span> • PWD: <span className="text-stone-700">{account.password}</span>
+                        Username: <span className="font-bold text-stone-800">{account.id}</span>
                       </p>
                     </div>
                     <span className="text-[11px] font-bold text-amber-700 bg-amber-50 px-2 py-1 rounded-lg group-hover:bg-amber-100">
-                      Use
+                      Fill ID
                     </span>
                   </button>
                 ))}

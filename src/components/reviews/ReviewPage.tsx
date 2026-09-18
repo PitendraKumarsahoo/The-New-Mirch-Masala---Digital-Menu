@@ -7,8 +7,9 @@ import {
   submitReview,
   getCustomerReviews,
 } from '../../services/reviewService';
-import { fetchGoogleReviewUrl } from '../../services/googleBusinessProfileService';
+import { fetchGoogleReviewUrlFromServer } from '../../services/googleBusinessProfileService';
 import { getCustomerSession, getLoyaltyStatus } from '../../services/loyaltyService';
+import { copyToClipboard } from '../../utils/clipboard';
 import { Review, ReviewSubmissionInput } from '../../types/review';
 import { Customer } from '../../types';
 
@@ -31,15 +32,17 @@ export const ReviewPage: React.FC<ReviewPageProps> = ({
   const [isLoadingUrl, setIsLoadingUrl] = useState<boolean>(true);
   const [submittedReview, setSubmittedReview] = useState<Review | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [popupBlocked, setPopupBlocked] = useState(false);
 
   // Load customer session & fetch Google Review URL securely from the server only after component mounts
   useEffect(() => {
     let isMounted = true;
 
     async function loadData() {
-      // 1. Fetch Google Review URL securely from the server after component mounts
+      // 1. Fetch Google Review URL securely from the server endpoint /api/google-review-url after component mounts
       try {
-        const urlConfig = await fetchGoogleReviewUrl(restaurantId);
+        setIsLoadingUrl(true);
+        const urlConfig = await fetchGoogleReviewUrlFromServer(restaurantId);
         if (isMounted) {
           setGoogleReviewUrl(urlConfig.googleReviewUrl);
           setIsConfigured(urlConfig.isConfigured);
@@ -81,7 +84,12 @@ export const ReviewPage: React.FC<ReviewPageProps> = ({
 
   const handleSubmitReview = async (input: ReviewSubmissionInput) => {
     setIsSubmitting(true);
+    setPopupBlocked(false);
+
+    let internalSavedReview: Review | null = null;
+
     try {
+      // 1. Save internally to the database first
       const res = await submitReview({
         ...input,
         restaurantId,
@@ -89,20 +97,55 @@ export const ReviewPage: React.FC<ReviewPageProps> = ({
       });
 
       if (res.success && res.review) {
-        // Ensure review has the active googleReviewUrl attached and records auto-post status
-        const finalReview: Review = {
-          ...res.review,
-          googleReviewUrl: res.review.googleReviewUrl || googleReviewUrl,
-          wasAutoOpened: Boolean(input.autoPostToGoogle),
-        };
-        setSubmittedReview(finalReview);
-        setMyReviews((prev) => [finalReview, ...prev]);
+        internalSavedReview = res.review;
       } else {
         throw new Error(res.error || 'Failed to submit review');
       }
-    } finally {
+    } catch (err: any) {
       setIsSubmitting(false);
+      throw err;
     }
+
+    // 2. Decoupled step: internal save has succeeded!
+    // Immediately copy review text to clipboard & auto-open Google review URL in a new tab
+    const targetUrl = (googleReviewUrl || internalSavedReview.googleReviewUrl || '').trim();
+    const textToCopy = (input.feedback || '').trim();
+
+    if (textToCopy) {
+      try {
+        await copyToClipboard(textToCopy);
+      } catch (clipErr) {
+        console.warn('Clipboard write failed:', clipErr);
+      }
+    }
+
+    let isBlocked = false;
+    if (targetUrl) {
+      try {
+        const newWin = window.open(targetUrl, '_blank', 'noopener,noreferrer');
+        if (!newWin || newWin.closed || typeof newWin.closed === 'undefined') {
+          isBlocked = true;
+        }
+      } catch (openErr) {
+        console.warn('Auto-open Google tab blocked:', openErr);
+        isBlocked = true;
+      }
+    } else {
+      isBlocked = true;
+    }
+
+    setPopupBlocked(isBlocked);
+
+    const finalReview: Review = {
+      ...internalSavedReview,
+      googleReviewUrl: targetUrl || internalSavedReview.googleReviewUrl,
+      wasAutoOpened: !isBlocked,
+      status: !isBlocked ? 'google_redirected' : internalSavedReview.status,
+    };
+
+    setSubmittedReview(finalReview);
+    setMyReviews((prev) => [finalReview, ...prev]);
+    setIsSubmitting(false);
   };
 
   const handleResetForNewReview = () => {
@@ -177,6 +220,7 @@ export const ReviewPage: React.FC<ReviewPageProps> = ({
             googleReviewUrl={googleReviewUrl}
             isConfigured={isConfigured}
             isLoadingUrl={isLoadingUrl}
+            popupBlocked={popupBlocked}
             onDone={onBackToMenu}
             onViewMyReviews={() => {
               setSubmittedReview(null);
@@ -190,6 +234,7 @@ export const ReviewPage: React.FC<ReviewPageProps> = ({
             customer={customer}
             googleReviewUrl={googleReviewUrl}
             isConfigured={isConfigured}
+            isLoadingUrl={isLoadingUrl}
             onSubmit={handleSubmitReview}
             isSubmitting={isSubmitting}
           />

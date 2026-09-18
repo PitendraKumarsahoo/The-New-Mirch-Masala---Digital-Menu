@@ -14,6 +14,8 @@ import { AdminVisitsView } from './views/AdminVisitsView';
 import { AdminRewardsView } from './views/AdminRewardsView';
 import { AdminReviewsView } from './views/AdminReviewsView';
 import { AdminSettingsView } from './views/AdminSettingsView';
+import { AdminStaffView } from './views/AdminStaffView';
+import { AdminAuditView } from './views/AdminAuditView';
 
 // Services
 import {
@@ -44,7 +46,7 @@ import {
   AdminReviewRecord,
   AdminRestaurantSettings,
 } from '../types/admin';
-import { X, Star, Settings, Award } from 'lucide-react';
+import { X, Star, Settings, Award, UserCheck, Activity } from 'lucide-react';
 
 const TAB_FROM_PATH: Record<string, AdminTab> = {
   '/admin': 'dashboard',
@@ -54,6 +56,8 @@ const TAB_FROM_PATH: Record<string, AdminTab> = {
   '/admin/visits': 'visits',
   '/admin/rewards': 'rewards',
   '/admin/reviews': 'reviews',
+  '/admin/staff': 'staff',
+  '/admin/audit': 'audit',
   '/admin/settings': 'settings',
 };
 
@@ -64,11 +68,13 @@ const PATH_FROM_TAB: Record<AdminTab, string> = {
   visits: '/admin/visits',
   rewards: '/admin/rewards',
   reviews: '/admin/reviews',
+  staff: '/admin/staff',
+  audit: '/admin/audit',
   settings: '/admin/settings',
 };
 
 const AdminDashboardInner: React.FC = () => {
-  const { user } = useAdminAuth();
+  const { user, canAccessTab } = useAdminAuth();
 
   // Tab State
   const [currentTab, setCurrentTab] = useState<AdminTab>(() => {
@@ -296,6 +302,14 @@ const AdminDashboardInner: React.FC = () => {
       title: 'Diner Reviews & Ratings',
       subtitle: `${reviews.length} feedback submissions • ${stats.averageRating} average rating`,
     },
+    staff: {
+      title: 'Staff & Access Control',
+      subtitle: 'Provision accounts, assign role permissions, and control access status',
+    },
+    audit: {
+      title: 'Security Audit Logs',
+      subtitle: 'Immutable chronological record of administrative actions and access events',
+    },
     settings: {
       title: 'Restaurant Settings & Profile',
       subtitle: 'Store identity, address, timings, and Google Maps review link',
@@ -372,11 +386,25 @@ const AdminDashboardInner: React.FC = () => {
             />
           )}
 
+          {currentTab === 'staff' && (
+            <AdminProtectedRoute requiredPermission="staff.manage" onNavigateFallback={() => navigateTo('dashboard')}>
+              <AdminStaffView />
+            </AdminProtectedRoute>
+          )}
+
+          {currentTab === 'audit' && (
+            <AdminProtectedRoute requiredPermission="audit.read" onNavigateFallback={() => navigateTo('dashboard')}>
+              <AdminAuditView />
+            </AdminProtectedRoute>
+          )}
+
           {currentTab === 'settings' && (
-            <AdminSettingsView
-              settings={settings}
-              onSaveSettings={handleSaveSettings}
-            />
+            <AdminProtectedRoute requiredPermission="settings.read" onNavigateFallback={() => navigateTo('dashboard')}>
+              <AdminSettingsView
+                settings={settings}
+                onSaveSettings={handleSaveSettings}
+              />
+            </AdminProtectedRoute>
           )}
         </main>
       </div>
@@ -402,21 +430,45 @@ const AdminDashboardInner: React.FC = () => {
               </button>
             </div>
 
-            <button
-              onClick={() => navigateTo('reviews')}
-              className="w-full flex items-center gap-3 p-3 rounded-xl bg-stone-950 text-left text-sm font-medium text-stone-200 hover:bg-stone-800"
-            >
-              <Star className="w-4 h-4 text-amber-400" />
-              <span>Customer Reviews & Feedback</span>
-            </button>
+            {canAccessTab('reviews') && (
+              <button
+                onClick={() => navigateTo('reviews')}
+                className="w-full flex items-center gap-3 p-3 rounded-xl bg-stone-950 text-left text-sm font-medium text-stone-200 hover:bg-stone-800"
+              >
+                <Star className="w-4 h-4 text-amber-400" />
+                <span>Customer Reviews & Feedback</span>
+              </button>
+            )}
 
-            <button
-              onClick={() => navigateTo('settings')}
-              className="w-full flex items-center gap-3 p-3 rounded-xl bg-stone-950 text-left text-sm font-medium text-stone-200 hover:bg-stone-800"
-            >
-              <Settings className="w-4 h-4 text-amber-400" />
-              <span>Restaurant Settings & Profile</span>
-            </button>
+            {canAccessTab('staff') && (
+              <button
+                onClick={() => navigateTo('staff')}
+                className="w-full flex items-center gap-3 p-3 rounded-xl bg-stone-950 text-left text-sm font-medium text-stone-200 hover:bg-stone-800"
+              >
+                <UserCheck className="w-4 h-4 text-amber-400" />
+                <span>Staff & Access Management</span>
+              </button>
+            )}
+
+            {canAccessTab('audit') && (
+              <button
+                onClick={() => navigateTo('audit')}
+                className="w-full flex items-center gap-3 p-3 rounded-xl bg-stone-950 text-left text-sm font-medium text-stone-200 hover:bg-stone-800"
+              >
+                <Activity className="w-4 h-4 text-amber-400" />
+                <span>Security Audit Logs</span>
+              </button>
+            )}
+
+            {canAccessTab('settings') && (
+              <button
+                onClick={() => navigateTo('settings')}
+                className="w-full flex items-center gap-3 p-3 rounded-xl bg-stone-950 text-left text-sm font-medium text-stone-200 hover:bg-stone-800"
+              >
+                <Settings className="w-4 h-4 text-amber-400" />
+                <span>Restaurant Settings & Profile</span>
+              </button>
+            )}
 
             <a
               href="/"
@@ -457,21 +509,25 @@ const AdminDashboardInner: React.FC = () => {
                     { id: 'visits', label: 'Visits' },
                     { id: 'rewards', label: 'Rewards' },
                     { id: 'reviews', label: 'Reviews' },
+                    { id: 'staff', label: 'Staff & Access' },
+                    { id: 'audit', label: 'Security Audit' },
                     { id: 'settings', label: 'Restaurant Settings' },
                   ] as const
-                ).map((tab) => (
-                  <button
-                    key={tab.id}
-                    onClick={() => navigateTo(tab.id)}
-                    className={`w-full text-left px-3 py-2.5 rounded-xl text-sm font-medium transition-colors ${
-                      currentTab === tab.id
-                        ? 'bg-amber-500 text-stone-950 font-bold'
-                        : 'text-stone-300 hover:bg-stone-800'
-                    }`}
-                  >
-                    {tab.label}
-                  </button>
-                ))}
+                )
+                  .filter((tab) => canAccessTab(tab.id))
+                  .map((tab) => (
+                    <button
+                      key={tab.id}
+                      onClick={() => navigateTo(tab.id)}
+                      className={`w-full text-left px-3 py-2.5 rounded-xl text-sm font-medium transition-colors ${
+                        currentTab === tab.id
+                          ? 'bg-amber-500 text-stone-950 font-bold'
+                          : 'text-stone-300 hover:bg-stone-800'
+                      }`}
+                    >
+                      {tab.label}
+                    </button>
+                  ))}
               </div>
             </div>
 

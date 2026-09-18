@@ -660,14 +660,16 @@ export async function searchCustomerForStaff(
   return getLoyaltyStatus(undefined, phone, restaurantId);
 }
 
+import { getStoredAuthToken } from '../admin/services/adminAuthService';
+
 /**
  * Staff Verification: Verify Customer Dine-In Eat
  * Enforces Anti-Fraud Rule: Maximum 1 valid strike per customer per day in Asia/Kolkata timezone!
+ * Authenticated staff session required; credentials are never passed in plaintext.
  */
 export async function verifyCustomerVisit(
   customerId: string,
   restaurantId = 'mirch-masala-01',
-  staffKey = 'mirchowner123',
   verifiedBy = 'Staff'
 ): Promise<{
   success: boolean;
@@ -682,10 +684,66 @@ export async function verifyCustomerVisit(
     return { success: false, error: 'Customer ID is required.' };
   }
 
+  const token = getStoredAuthToken();
+
+  // 1. Call Secure Server Endpoint if token exists
+  if (token) {
+    try {
+      const serverRes = await fetch('/api/staff/verify-visit', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          customerId,
+          restaurantId,
+        }),
+      });
+
+      const serverData = await serverRes.json().catch(() => ({}));
+      if (serverRes.ok && serverData.success) {
+        // Sync local cache with verified record
+        const db = getLocalDB();
+        const localCust = db.customers.find((c) => c.customerId === customerId);
+        if (localCust) {
+          localCust.totalVisits = serverData.customer?.totalVisits || (localCust.totalVisits || 0) + 1;
+          localCust.lastVisitAt = `${serverData.visit.visitDate} ${serverData.visit.visitTime}`;
+          db.visits.unshift(serverData.visit);
+          saveLocalDB(db);
+        }
+
+        const customerVisits = db.visits.filter((v) => v.customerId === customerId);
+        const loyalty = computeLoyaltyObject(localCust || serverData.customer, customerVisits);
+
+        return {
+          success: true,
+          message: serverData.message || 'Dine-in verified! 1 Strike added.',
+          customer: localCust || serverData.customer,
+          loyalty,
+          visit: serverData.visit,
+        };
+      } else if (serverData.alreadyVerified) {
+        return {
+          success: false,
+          alreadyVerified: true,
+          message: serverData.message || "Today's dine-in visit is already verified. Maximum 1 strike per day allowed.",
+        };
+      } else if (serverRes.status === 401 || serverRes.status === 403) {
+        return {
+          success: false,
+          error: serverData.error || 'Authentication required: You do not have permission to verify visits.',
+        };
+      }
+    } catch {
+      // Fallback to local DB enforcement
+    }
+  }
+
   const todayStr = getTodayKolkataDate();
   const timeStr = getKolkataTimeFormatted();
 
-  // 1. Check local DB for today's visit
+  // Local fallback check
   const db = getLocalDB();
   const customer = db.customers.find((c) => c.customerId === customerId);
   if (!customer) {
@@ -721,7 +779,6 @@ export async function verifyCustomerVisit(
   };
   db.visits.unshift(newVisit);
 
-  // Increment customer's verified total visits (+1 strike)
   customer.totalVisits = (customer.totalVisits || 0) + 1;
   customer.lastVisitAt = `${todayStr} ${timeStr}`;
 
@@ -729,23 +786,6 @@ export async function verifyCustomerVisit(
 
   const customerVisits = db.visits.filter((v) => v.customerId === customerId);
   const loyalty = computeLoyaltyObject(customer, customerVisits);
-
-  // Sync to remote API in background
-  try {
-    const url = `${API_BASE_URL}?action=verifyVisit`;
-    fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify({
-        customerId,
-        restaurantId,
-        staffKey,
-        verifiedBy,
-      }),
-    }).catch(() => {});
-  } catch {
-    // Ignore network error
-  }
 
   return {
     success: true,
@@ -763,7 +803,6 @@ export async function redeemCustomerReward(
   customerId: string,
   rewardTierId?: string,
   restaurantId = 'mirch-masala-01',
-  staffKey = 'mirchowner123',
   verifiedBy = 'Staff'
 ): Promise<{ success: boolean; message?: string; customer?: Customer; loyalty?: LoyaltyStatus; error?: string }> {
   const db = getLocalDB();

@@ -1,59 +1,77 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
-import { AdminUser, AdminRole } from '../../types/admin';
-import { STAFF_ACCOUNTS } from '../../config/staffAccounts';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { AdminUser, AdminRole, AdminPermission, hasPermission, hasRole, canAccessTab, AuthErrorType } from '../types/auth';
+import { loginAdmin, fetchCurrentSession, logoutAdmin, getStoredAuthToken } from '../services/adminAuthService';
 
 export interface AdminAuthContextType {
   user: AdminUser | null;
+  role: AdminRole | null;
+  isOwner: boolean;
+  isStaff: boolean;
+  isManager: boolean;
   isAuthenticated: boolean;
   isLoading: boolean;
   restaurantId: string;
-  login: (credentials: { username: string; password?: string }) => Promise<{ success: boolean; error?: string }>;
-  logout: () => void;
+  sessionError: string | null;
+  login: (credentials: { username: string; password?: string }) => Promise<{ success: boolean; error?: string; errorCode?: AuthErrorType }>;
+  logout: () => Promise<void>;
+  hasPermission: (permission: AdminPermission) => boolean;
+  hasRole: (allowedRoles: AdminRole[]) => boolean;
+  canAccessTab: (tab: string) => boolean;
+  clearSessionError: () => void;
 }
 
 const AdminAuthContext = createContext<AdminAuthContextType | undefined>(undefined);
 
-const ADMIN_SESSION_TOKEN_KEY = 'mirch_admin_session_token_v1';
-const DEFAULT_RESTAURANT_ID = 'mirch-masala-01';
+export const DEFAULT_RESTAURANT_ID = 'mirch-masala-01';
 
 export const AdminAuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<AdminUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [sessionError, setSessionError] = useState<string | null>(null);
 
-  // Restore authenticated session from tab session (in-memory/sessionStorage, NOT persistent plaintext in localStorage)
-  useEffect(() => {
+  // Restore authenticated session from backend session endpoint
+  const restoreSession = useCallback(async () => {
+    setIsLoading(true);
+    const token = getStoredAuthToken();
+    if (!token) {
+      setUser(null);
+      setIsLoading(false);
+      return;
+    }
+
     try {
-      if (typeof window !== 'undefined') {
-        const sessionToken = sessionStorage.getItem(ADMIN_SESSION_TOKEN_KEY);
-        if (sessionToken) {
-          const parsed = JSON.parse(sessionToken);
-          if (parsed && parsed.id && parsed.role) {
-            setUser({
-              id: parsed.id,
-              name: parsed.name,
-              role: parsed.role as AdminRole,
-              restaurantId: parsed.restaurantId || DEFAULT_RESTAURANT_ID,
-              title: parsed.title || 'Restaurant Owner',
-            });
-          }
+      const res = await fetchCurrentSession();
+      if (res.success && res.data?.user) {
+        setUser(res.data.user);
+        setSessionError(null);
+      } else {
+        setUser(null);
+        if (res.errorCode === 'SESSION_EXPIRED') {
+          setSessionError('Your session has expired. Please sign in again.');
+        } else if (res.errorCode === 'ACCOUNT_DISABLED') {
+          setSessionError('Your account has been deactivated. Please contact the restaurant owner.');
         }
       }
-    } catch (e) {
-      console.warn('Could not restore admin session', e);
+    } catch {
+      setUser(null);
     } finally {
       setIsLoading(false);
     }
   }, []);
 
-  /**
-   * Secure Auth Abstraction:
-   * Validates credentials against authorized admin profiles or backend endpoint.
-   * Does NOT expose plaintext passwords in code or store them in localStorage.
-   */
-  const login = async (credentials: { username: string; password?: string }): Promise<{ success: boolean; error?: string }> => {
+  useEffect(() => {
+    restoreSession();
+  }, [restoreSession]);
+
+  const login = async (credentials: {
+    username: string;
+    password?: string;
+  }): Promise<{ success: boolean; error?: string; errorCode?: AuthErrorType }> => {
     setIsLoading(true);
+    setSessionError(null);
+
     try {
-      const cleanUsername = (credentials.username || '').trim().toLowerCase();
+      const cleanUsername = (credentials.username || '').trim();
       const cleanPassword = (credentials.password || '').trim();
 
       if (!cleanUsername) {
@@ -66,70 +84,84 @@ export const AdminAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         return { success: false, error: 'Please enter your password.' };
       }
 
-      // Check authorized owner/manager roles
-      const matchedStaff = STAFF_ACCOUNTS.find(
-        (s) => s.id.toLowerCase() === cleanUsername || s.name.toLowerCase().includes(cleanUsername)
-      );
+      const res = await loginAdmin(cleanUsername, cleanPassword);
 
-      if (!matchedStaff) {
+      if (res.success && res.data?.user) {
+        setUser(res.data.user);
         setIsLoading(false);
-        return { success: false, error: 'No account found with this username.' };
-      }
-
-      // Role check: Only Owner and Manager are authorized for the Admin Dashboard
-      if (matchedStaff.role !== 'Owner' && matchedStaff.role !== 'Manager') {
+        return { success: true };
+      } else {
         setIsLoading(false);
         return {
           success: false,
-          error: 'Access restricted: Only restaurant Owners and Managers can access the Admin Dashboard. Front desk staff may use the /staff terminal.',
+          error: res.error || 'Authentication failed. Please verify your credentials.',
+          errorCode: res.errorCode,
         };
       }
-
-      if (matchedStaff.password !== cleanPassword) {
-        setIsLoading(false);
-        return { success: false, error: 'Invalid password. Please verify and try again.' };
-      }
-
-      // Successful authentication: create session abstraction
-      const adminUser: AdminUser = {
-        id: matchedStaff.id,
-        name: matchedStaff.name,
-        role: matchedStaff.role === 'Owner' ? 'OWNER' : 'MANAGER',
-        restaurantId: DEFAULT_RESTAURANT_ID,
-        title: matchedStaff.title,
+    } catch (err: any) {
+      setIsLoading(false);
+      return {
+        success: false,
+        error: 'An unexpected authentication error occurred. Please try again.',
+        errorCode: 'NETWORK_ERROR',
       };
-
-      setUser(adminUser);
-
-      // Store ephemeral session token in sessionStorage (cleared when browser tab closes)
-      if (typeof window !== 'undefined') {
-        sessionStorage.setItem(ADMIN_SESSION_TOKEN_KEY, JSON.stringify(adminUser));
-      }
-
-      setIsLoading(false);
-      return { success: true };
-    } catch (err) {
-      setIsLoading(false);
-      return { success: false, error: 'An unexpected authentication error occurred.' };
     }
   };
 
-  const logout = () => {
-    setUser(null);
-    if (typeof window !== 'undefined') {
-      sessionStorage.removeItem(ADMIN_SESSION_TOKEN_KEY);
+  const logout = async (): Promise<void> => {
+    setIsLoading(true);
+    try {
+      await logoutAdmin();
+    } finally {
+      setUser(null);
+      setSessionError(null);
+      setIsLoading(false);
+      // Ensure Back button cannot access protected page
+      if (typeof window !== 'undefined') {
+        window.history.replaceState(null, '', '/admin');
+      }
     }
+  };
+
+  const checkPermission = useCallback(
+    (permission: AdminPermission): boolean => {
+      return hasPermission(user, permission);
+    },
+    [user]
+  );
+
+  const checkRole = useCallback(
+    (allowedRoles: AdminRole[]): boolean => {
+      return hasRole(user, allowedRoles);
+    },
+    [user]
+  );
+
+  const checkCanAccessTab = useCallback(
+    (tab: string): boolean => {
+      return canAccessTab(user, tab);
+    },
+    [user]
+  );
+
+  const clearSessionError = () => {
+    setSessionError(null);
   };
 
   return (
     <AdminAuthContext.Provider
       value={{
         user,
-        isAuthenticated: !!user,
+        isAuthenticated: !!user && user.isActive,
         isLoading,
         restaurantId: user?.restaurantId || DEFAULT_RESTAURANT_ID,
+        sessionError,
         login,
         logout,
+        hasPermission: checkPermission,
+        hasRole: checkRole,
+        canAccessTab: checkCanAccessTab,
+        clearSessionError,
       }}
     >
       {children}
@@ -137,10 +169,10 @@ export const AdminAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   );
 };
 
-export function useAdminAuth(): AdminAuthContextType {
+export const useAdminAuth = (): AdminAuthContextType => {
   const context = useContext(AdminAuthContext);
   if (!context) {
     throw new Error('useAdminAuth must be used within an AdminAuthProvider');
   }
   return context;
-}
+};

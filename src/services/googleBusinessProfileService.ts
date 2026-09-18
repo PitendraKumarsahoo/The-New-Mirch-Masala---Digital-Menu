@@ -44,21 +44,18 @@ export interface GoogleReviewUrlResponse {
 }
 
 /**
- * Fetches the Google Review URL securely from the server.
+ * Fetches the Google Review URL securely from the server-side endpoint /api/google-review-url.
  * Ensures the review URL is securely obtained from server configuration or
- * Google Business Profile metadata, protecting server secrets while providing
+ * verified Google Business Profile metadata, protecting server secrets while providing
  * the verified Google review destination URL.
  *
- * Guarantees that the frontend receives the URL after the ReviewPage component mounts.
+ * Guarantees that the frontend can call this after the ReviewPage component mounts,
+ * managing the loading state and handling missing/unavailable states gracefully.
  */
-export async function fetchGoogleReviewUrl(
+export async function fetchGoogleReviewUrlFromServer(
   restaurantId = 'mirch-masala-01'
 ): Promise<GoogleReviewUrlResponse> {
-  let fetchedUrl = '';
-  let source: 'server_api' | 'apps_script' | 'verified_business_profile' = 'verified_business_profile';
-  let isConnected = false;
-
-  // 1. Fetch securely from local server API endpoint (/api/google-review-url)
+  // 1. Primary: Fetch securely from local server API endpoint (/api/google-review-url)
   try {
     const serverRes = await fetch(
       `/api/google-review-url?restaurantId=${encodeURIComponent(restaurantId)}&_t=${Date.now()}`,
@@ -69,81 +66,89 @@ export async function fetchGoogleReviewUrl(
     );
     if (serverRes.ok) {
       const serverData = await serverRes.json();
-      if (serverData && serverData.success && serverData.googleReviewUrl) {
-        fetchedUrl = String(serverData.googleReviewUrl).trim();
-        source = 'server_api';
+      if (serverData && serverData.googleReviewUrl && String(serverData.googleReviewUrl).trim().length > 0) {
+        return {
+          success: true,
+          googleReviewUrl: String(serverData.googleReviewUrl).trim(),
+          isConfigured: Boolean(serverData.isConfigured !== false),
+          restaurantId,
+          source: 'server_api',
+          businessProfileConnected: Boolean(serverData.businessProfileConnected),
+        };
+      } else if (serverData && serverData.isConfigured === false) {
+        return {
+          success: false,
+          googleReviewUrl: '',
+          isConfigured: false,
+          restaurantId,
+          source: 'server_api',
+          error: serverData.error || 'Google Review URL is not configured on the server.',
+        };
+      }
+    }
+  } catch (err) {
+    console.warn('Endpoint /api/google-review-url failed or offline, trying secondary sources:', err);
+  }
+
+  // 2. Secondary fallback: Fetch from Google Apps Script Web App endpoint if available
+  try {
+    const scriptUrl = `${API_BASE_URL}?action=getGoogleReviewConfig&restaurantId=${encodeURIComponent(
+      restaurantId
+    )}&_t=${Date.now()}`;
+    const scriptRes = await fetch(scriptUrl);
+    if (scriptRes.ok) {
+      const data = await scriptRes.json();
+      if (data && data.success && data.googleReviewUrl && data.googleReviewUrl.trim().length > 0) {
+        return {
+          success: true,
+          googleReviewUrl: data.googleReviewUrl.trim(),
+          isConfigured: true,
+          restaurantId,
+          source: 'apps_script',
+          businessProfileConnected: Boolean(data.businessProfileConnected),
+        };
       }
     }
   } catch {
-    // Local server endpoint unavailable or running in pure static mode
+    // Apps script network failure fallback
   }
 
-  // 2. Fetch from Google Apps Script Web App endpoint if not yet resolved
-  if (!fetchedUrl) {
-    try {
-      const scriptUrl = `${API_BASE_URL}?action=getGoogleReviewConfig&restaurantId=${encodeURIComponent(
-        restaurantId
-      )}&_t=${Date.now()}`;
-      const scriptRes = await fetch(scriptUrl);
-      if (scriptRes.ok) {
-        const data = await scriptRes.json();
-        if (data && data.success && data.googleReviewUrl && data.googleReviewUrl.trim().length > 0) {
-          fetchedUrl = data.googleReviewUrl.trim();
-          source = 'apps_script';
-          isConnected = Boolean(data.businessProfileConnected);
-        }
-      }
-    } catch {
-      // Apps script network failure
-    }
+  // 3. Fallback: Environment variable or official verified destination
+  const envUrl =
+    typeof import.meta !== 'undefined' && import.meta.env
+      ? (import.meta.env.VITE_GOOGLE_REVIEW_URL as string)
+      : '';
+  if (envUrl && envUrl.trim().length > 0) {
+    return {
+      success: true,
+      googleReviewUrl: envUrl.trim(),
+      isConfigured: true,
+      restaurantId,
+      source: 'server_api',
+    };
   }
 
-  // 3. Check Google Apps Script restaurant action if getGoogleReviewConfig is an older script version
-  if (!fetchedUrl) {
-    try {
-      const restUrl = `${API_BASE_URL}?action=restaurant&restaurantId=${encodeURIComponent(
-        restaurantId
-      )}&_t=${Date.now()}`;
-      const restRes = await fetch(restUrl);
-      if (restRes.ok) {
-        const restData = await restRes.json();
-        if (restData && restData.success && restData.restaurant && restData.restaurant.googleReviewUrl) {
-          const u = String(restData.restaurant.googleReviewUrl).trim();
-          if (u.length > 0) {
-            fetchedUrl = u;
-            source = 'apps_script';
-          }
-        }
-      }
-    } catch {
-      // Ignore
-    }
-  }
-
-  // 4. If still not fetched from server, use environment configuration or authoritative verified Google Business Profile link
-  if (!fetchedUrl) {
-    const envUrl =
-      typeof import.meta !== 'undefined' && import.meta.env
-        ? (import.meta.env.VITE_GOOGLE_REVIEW_URL as string)
-        : '';
-    if (envUrl && envUrl.trim().length > 0) {
-      fetchedUrl = envUrl.trim();
-      source = 'server_api';
-    } else {
-      fetchedUrl = DEFAULT_GOOGLE_REVIEW_URL;
-      source = 'verified_business_profile';
-    }
+  if (DEFAULT_GOOGLE_REVIEW_URL) {
+    return {
+      success: true,
+      googleReviewUrl: DEFAULT_GOOGLE_REVIEW_URL,
+      isConfigured: true,
+      restaurantId,
+      source: 'verified_business_profile',
+    };
   }
 
   return {
-    success: true,
-    googleReviewUrl: fetchedUrl,
-    isConfigured: Boolean(fetchedUrl && fetchedUrl.length > 0),
+    success: false,
+    googleReviewUrl: '',
+    isConfigured: false,
     restaurantId,
-    source,
-    businessProfileConnected: isConnected,
+    source: 'server_api',
+    error: 'Google Review URL is currently unavailable.',
   };
 }
+
+export const fetchGoogleReviewUrl = fetchGoogleReviewUrlFromServer;
 
 // Aliases for compatibility
 export const getSecureGoogleReviewUrl = fetchGoogleReviewUrl;

@@ -11,6 +11,7 @@ interface ReviewFormProps {
   customer?: Customer | null;
   googleReviewUrl?: string;
   isConfigured?: boolean;
+  isLoadingUrl?: boolean;
   onSubmit: (input: ReviewSubmissionInput) => Promise<void>;
   isSubmitting?: boolean;
 }
@@ -20,6 +21,7 @@ export const ReviewForm: React.FC<ReviewFormProps> = ({
   customer,
   googleReviewUrl = 'https://www.google.com/maps/search/?api=1&query=The+New+Mirch+Masala+Gunupur+Odisha',
   isConfigured = true,
+  isLoadingUrl = false,
   onSubmit,
   isSubmitting = false,
 }) => {
@@ -32,16 +34,6 @@ export const ReviewForm: React.FC<ReviewFormProps> = ({
   // AI Review Suggestion States
   const [isAiGenerating, setIsAiGenerating] = useState<boolean>(false);
   const [aiNotice, setAiNotice] = useState<string | null>(null);
-
-  // Automatic Google Review Post / Sync toggle
-  const [autoOpenGoogle, setAutoOpenGoogle] = useState<boolean>(true);
-
-  // Default auto-open to true when high rating is chosen
-  useEffect(() => {
-    if (rating >= 4) {
-      setAutoOpenGoogle(true);
-    }
-  }, [rating]);
 
   const toggleTopic = (topic: string) => {
     setSelectedTopics((prev) =>
@@ -105,27 +97,6 @@ export const ReviewForm: React.FC<ReviewFormProps> = ({
     }
 
     const trimmedFeedback = feedback.trim();
-    const effectiveGoogleUrl =
-      googleReviewUrl ||
-      'https://www.google.com/maps/search/?api=1&query=The+New+Mirch+Masala+Gunupur+Odisha';
-
-    // If auto-open is enabled and rating is 4 or 5 stars:
-    // Execute clipboard copy and window.open synchronously within user gesture
-    if (autoOpenGoogle && rating >= 4) {
-      if (trimmedFeedback) {
-        try {
-          await navigator.clipboard.writeText(trimmedFeedback);
-        } catch {
-          // Clipboard fallback handled gracefully
-        }
-      }
-      try {
-        // Open Google review page in new tab immediately
-        window.open(effectiveGoogleUrl, '_blank');
-      } catch {
-        // Handled in success UI if popup blocked
-      }
-    }
 
     try {
       await onSubmit({
@@ -135,7 +106,7 @@ export const ReviewForm: React.FC<ReviewFormProps> = ({
         rating,
         topics: selectedTopics,
         feedback: trimmedFeedback,
-        autoPostToGoogle: autoOpenGoogle && rating >= 4,
+        autoPostToGoogle: false,
       });
     } catch (err: any) {
       setErrorMessage(err.message || 'Failed to submit review. Please try again.');
@@ -307,35 +278,6 @@ export const ReviewForm: React.FC<ReviewFormProps> = ({
         />
       </div>
 
-      {/* Automatic Google Review Posting Box */}
-      <div className="p-3.5 rounded-2xl bg-gradient-to-r from-blue-50/80 to-amber-50/80 border border-blue-200/80 space-y-2">
-        <label className="flex items-start justify-between gap-3 cursor-pointer select-none">
-          <div className="flex items-start gap-2.5">
-            <div className="w-8 h-8 rounded-xl bg-white shadow-xs border border-blue-200 flex items-center justify-center text-blue-600 font-black text-sm shrink-0">
-              G
-            </div>
-            <div className="space-y-0.5">
-              <div className="text-xs font-bold text-stone-900 flex items-center gap-1.5">
-                <span>Automatic Google Review Post</span>
-                <span className="px-1.5 py-0.2 rounded-full text-[9px] bg-blue-600 text-white font-bold uppercase tracking-wider">
-                  Instant
-                </span>
-              </div>
-              <p className="text-[11px] text-stone-600 leading-tight">
-                Automatically copies your review to clipboard & opens Google Maps Reviews directly so you can paste and post without typing again!
-              </p>
-            </div>
-          </div>
-          <input
-            type="checkbox"
-            id="checkbox-auto-open-google"
-            checked={autoOpenGoogle}
-            onChange={(e) => setAutoOpenGoogle(e.target.checked)}
-            className="w-4 h-4 mt-1 rounded text-blue-600 focus:ring-blue-500 cursor-pointer accent-blue-600"
-          />
-        </label>
-      </div>
-
       {/* Customer Name input if not registered */}
       {!customer && (
         <div className="space-y-1">
@@ -372,20 +314,13 @@ export const ReviewForm: React.FC<ReviewFormProps> = ({
         className={`w-full py-3.5 px-4 rounded-2xl font-bold text-xs sm:text-sm shadow-md transition-all duration-150 flex items-center justify-center gap-2 cursor-pointer ${
           rating === 0
             ? 'bg-stone-200 text-stone-400 cursor-not-allowed shadow-none'
-            : autoOpenGoogle && rating >= 4
-            ? 'bg-gradient-to-r from-blue-600 via-indigo-600 to-amber-600 hover:from-blue-700 hover:to-amber-700 text-white active:scale-[0.99]'
             : 'bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 hover:from-amber-600 hover:to-orange-600 text-white active:scale-[0.99]'
         }`}
       >
         {isSubmitting ? (
           <>
             <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-            <span>Submitting Review...</span>
-          </>
-        ) : autoOpenGoogle && rating >= 4 ? (
-          <>
-            <Send className="w-4 h-4" />
-            <span>Submit & Post to Google Review 🚀</span>
+            <span>Saving Review...</span>
           </>
         ) : (
           <>

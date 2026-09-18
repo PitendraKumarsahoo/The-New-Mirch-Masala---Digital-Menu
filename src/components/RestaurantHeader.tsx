@@ -1,4 +1,4 @@
-import { MapPin, Clock, Star } from 'lucide-react';
+import { MapPin, Clock, Star, ShieldCheck } from 'lucide-react';
 import { RESTAURANT_INFO } from '../data/menuData';
 import { RestaurantInfo } from '../types';
 
@@ -65,6 +65,21 @@ export function RestaurantHeader({
             <Clock className="w-3 h-3 text-slate-400" />
             <span>{restaurant.timings || '11:00 AM – 10:30 PM'}</span>
           </div>
+
+          <a
+            href="/admin"
+            id="header-admin-portal-link"
+            onClick={(e) => {
+              e.preventDefault();
+              window.history.pushState({}, '', '/admin');
+              window.dispatchEvent(new PopStateEvent('popstate'));
+            }}
+            className="p-1.5 text-slate-400 hover:text-orange-600 hover:bg-orange-50 rounded-full border border-slate-200 transition-colors flex items-center justify-center"
+            title="Owner & Staff Portal (/admin)"
+            aria-label="Owner & Staff Portal"
+          >
+            <ShieldCheck className="w-3.5 h-3.5" />
+          </a>
         </div>
       </div>
 

@@ -1,18 +1,22 @@
-export interface StaffAccount {
+/**
+ * Public Staff Role Display Metadata
+ * IMPORTANT: Passwords are NEVER stored in client-side code.
+ * Authentication is processed securely by the server-side auth provider.
+ */
+
+export interface StaffAccountMeta {
   id: string; // Login ID / username
   name: string;
   role: 'Owner' | 'Manager' | 'Staff';
-  password: string;
   title: string;
   badgeColor: string;
 }
 
-export const STAFF_ACCOUNTS: StaffAccount[] = [
+export const STAFF_METADATA: StaffAccountMeta[] = [
   {
     id: 'rajesh',
     name: 'Rajesh Sharma',
     role: 'Owner',
-    password: 'mirchowner123',
     title: 'Restaurant Owner',
     badgeColor: 'bg-amber-500 text-white',
   },
@@ -20,7 +24,6 @@ export const STAFF_ACCOUNTS: StaffAccount[] = [
     id: 'vikram',
     name: 'Vikram Singh',
     role: 'Manager',
-    password: 'mirchmanager123',
     title: 'Store Manager',
     badgeColor: 'bg-orange-500 text-white',
   },
@@ -28,20 +31,22 @@ export const STAFF_ACCOUNTS: StaffAccount[] = [
     id: 'pooja',
     name: 'Pooja Verma',
     role: 'Staff',
-    password: 'mirchstaff123',
     title: 'Cashier & Front Desk Staff',
     badgeColor: 'bg-stone-700 text-white',
   },
 ];
 
-export function findStaffAccount(id: string, password?: string): StaffAccount | null {
+// Backwards-compatible interface without plaintext passwords
+export interface StaffAccount extends StaffAccountMeta {
+  password?: string;
+}
+
+export const STAFF_ACCOUNTS: StaffAccount[] = STAFF_METADATA;
+
+export function findStaffAccount(id: string): StaffAccount | null {
   const cleanId = (id || '').trim().toLowerCase();
-  const staff = STAFF_ACCOUNTS.find(
+  const staff = STAFF_METADATA.find(
     (s) => s.id.toLowerCase() === cleanId || s.name.toLowerCase().includes(cleanId)
   );
-  if (!staff) return null;
-  if (password !== undefined) {
-    if (staff.password !== password.trim()) return null;
-  }
-  return staff;
+  return staff || null;
 }

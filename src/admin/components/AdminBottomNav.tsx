@@ -28,7 +28,11 @@ export const AdminBottomNav: React.FC<AdminBottomNavProps> = ({
     { id: 'rewards', label: 'Rewards', icon: Award },
   ];
 
-  const isMoreActive = currentTab === 'reviews' || currentTab === 'settings';
+  const isMoreActive =
+    currentTab === 'reviews' ||
+    currentTab === 'settings' ||
+    currentTab === 'staff' ||
+    currentTab === 'audit';
 
   return (
     <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-stone-900/98 backdrop-blur-md border-t border-stone-800 px-2 py-1.5 flex items-center justify-around text-stone-300">
