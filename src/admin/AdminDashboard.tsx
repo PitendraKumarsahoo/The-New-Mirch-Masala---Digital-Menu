@@ -393,13 +393,13 @@ const AdminDashboardInner: React.FC = () => {
           )}
 
           {currentTab === 'audit' && (
-            <AdminProtectedRoute requiredPermission="audit.read" onNavigateFallback={() => navigateTo('dashboard')}>
+            <AdminProtectedRoute requiredPermission="audit.view" onNavigateFallback={() => navigateTo('dashboard')}>
               <AdminAuditView />
             </AdminProtectedRoute>
           )}
 
           {currentTab === 'settings' && (
-            <AdminProtectedRoute requiredPermission="settings.read" onNavigateFallback={() => navigateTo('dashboard')}>
+            <AdminProtectedRoute requiredPermission="settings.view" onNavigateFallback={() => navigateTo('dashboard')}>
               <AdminSettingsView
                 settings={settings}
                 onSaveSettings={handleSaveSettings}

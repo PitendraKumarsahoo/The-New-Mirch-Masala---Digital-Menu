@@ -16,6 +16,7 @@ export type AdminPermission =
   | 'rewards.create'
   | 'rewards.update'
   | 'rewards.toggle'
+  | 'rewards.redeem'
   | 'reviews.view'
   | 'reviews.respond'
   | 'settings.view'
@@ -41,6 +42,7 @@ export const ROLE_PERMISSIONS: Record<AdminRole, AdminPermission[]> = {
     'rewards.create',
     'rewards.update',
     'rewards.toggle',
+    'rewards.redeem',
     'reviews.view',
     'reviews.respond',
     'settings.view',
@@ -59,6 +61,7 @@ export const ROLE_PERMISSIONS: Record<AdminRole, AdminPermission[]> = {
     'visits.view',
     'visits.verify',
     'rewards.view',
+    'rewards.redeem',
     'reviews.view',
     'settings.view',
     'audit.view',
@@ -66,6 +69,7 @@ export const ROLE_PERMISSIONS: Record<AdminRole, AdminPermission[]> = {
   STAFF: [
     'visits.view',
     'visits.verify',
+    'rewards.redeem',
     'customers.lookup',
   ],
 };

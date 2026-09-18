@@ -8,10 +8,12 @@ import {
   AlertTriangle,
   Gift,
   Sparkles,
+  Lock,
 } from 'lucide-react';
 import { AdminRewardItem } from '../../types/admin';
 import { RewardEditorModal } from '../components/RewardEditorModal';
 import { ConfirmationModal } from '../components/ConfirmationModal';
+import { useAdminAuth } from '../context/AdminAuthContext';
 
 interface AdminRewardsViewProps {
   rewards: AdminRewardItem[];
@@ -24,6 +26,9 @@ export const AdminRewardsView: React.FC<AdminRewardsViewProps> = ({
   onSaveReward,
   onToggleActive,
 }) => {
+  const { isOwner, isManager, isStaff, hasPermission } = useAdminAuth();
+  const canManageRewards = isOwner || hasPermission('rewards.create') || hasPermission('rewards.update');
+
   const [isEditorOpen, setIsEditorOpen] = useState(false);
   const [editingReward, setEditingReward] = useState<AdminRewardItem | null>(null);
 
@@ -76,13 +81,20 @@ export const AdminRewardsView: React.FC<AdminRewardsViewProps> = ({
           </p>
         </div>
 
-        <button
-          onClick={handleOpenAdd}
-          className="px-4 py-2.5 bg-amber-500 hover:bg-amber-400 active:bg-amber-600 text-stone-950 font-bold rounded-xl text-sm flex items-center justify-center gap-2 shadow-lg shadow-amber-500/20 transition-all cursor-pointer shrink-0"
-        >
-          <Plus className="w-4 h-4" />
-          <span>Add New Reward</span>
-        </button>
+        {canManageRewards ? (
+          <button
+            onClick={handleOpenAdd}
+            className="px-4 py-2.5 bg-amber-500 hover:bg-amber-400 active:bg-amber-600 text-stone-950 font-bold rounded-xl text-sm flex items-center justify-center gap-2 shadow-lg shadow-amber-500/20 transition-all cursor-pointer shrink-0"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Add New Reward</span>
+          </button>
+        ) : (
+          <div className="px-3 py-2 bg-stone-900 border border-stone-800 rounded-xl text-xs text-stone-400 flex items-center gap-2 shrink-0">
+            <Lock className="w-3.5 h-3.5 text-stone-500" />
+            <span>Editing rewards requires Manager/Owner role</span>
+          </div>
+        )}
       </div>
 
       {/* Rewards Grid */}
@@ -111,13 +123,19 @@ export const AdminRewardsView: React.FC<AdminRewardsViewProps> = ({
                     >
                       {isActive ? 'ACTIVE' : 'INACTIVE'}
                     </span>
-                    <button
-                      onClick={() => handleOpenEdit(reward)}
-                      title="Edit Reward Tier"
-                      className="p-1.5 text-stone-400 hover:text-amber-400 hover:bg-stone-800 rounded-lg transition-colors cursor-pointer"
-                    >
-                      <Edit2 className="w-4 h-4" />
-                    </button>
+                    {canManageRewards ? (
+                      <button
+                        onClick={() => handleOpenEdit(reward)}
+                        title="Edit Reward Tier"
+                        className="p-1.5 text-stone-400 hover:text-amber-400 hover:bg-stone-800 rounded-lg transition-colors cursor-pointer"
+                      >
+                        <Edit2 className="w-4 h-4" />
+                      </button>
+                    ) : (
+                      <span className="p-1.5 text-stone-600" title="Read-only access">
+                        <Lock className="w-3.5 h-3.5" />
+                      </span>
+                    )}
                   </div>
                 </div>
 
@@ -140,8 +158,12 @@ export const AdminRewardsView: React.FC<AdminRewardsViewProps> = ({
 
                 <button
                   type="button"
-                  onClick={() => handleTriggerToggle(reward)}
-                  className={`relative inline-flex h-5 w-10 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                  disabled={!canManageRewards}
+                  onClick={() => canManageRewards && handleTriggerToggle(reward)}
+                  title={!canManageRewards ? 'Permission required to toggle reward status' : isActive ? 'Click to deactivate' : 'Click to activate'}
+                  className={`relative inline-flex h-5 w-10 shrink-0 rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                    !canManageRewards ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'
+                  } ${
                     isActive ? 'bg-emerald-500' : 'bg-stone-700'
                   }`}
                 >

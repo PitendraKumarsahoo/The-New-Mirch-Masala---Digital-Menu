@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { useAdminAuth } from '../context/AdminAuthContext';
 import { AdminLogin } from './AdminLogin';
 import { AdminPermission, AdminRole } from '../types/auth';
@@ -21,6 +21,29 @@ export const AdminProtectedRoute: React.FC<AdminProtectedRouteProps> = ({
 }) => {
   const { isAuthenticated, isLoading, user, hasPermission, hasRole, logout } = useAdminAuth();
 
+  // If user becomes authenticated while on /admin/login, redirect to intended target or /admin
+  useEffect(() => {
+    if (isAuthenticated && user && typeof window !== 'undefined') {
+      const path = window.location.pathname.toLowerCase().replace(/\/$/, '');
+      if (path === '/admin/login') {
+        const target = sessionStorage.getItem('mirch_admin_redirect_after_login') || '/admin';
+        sessionStorage.removeItem('mirch_admin_redirect_after_login');
+        window.history.replaceState(null, '', target);
+      }
+    }
+  }, [isAuthenticated, user]);
+
+  // If user is not authenticated and is on any protected /admin route other than /admin/login, redirect to /admin/login
+  useEffect(() => {
+    if (!isLoading && !isAuthenticated && typeof window !== 'undefined') {
+      const current = window.location.pathname;
+      if (current.toLowerCase() !== '/admin/login' && current.startsWith('/admin')) {
+        sessionStorage.setItem('mirch_admin_redirect_after_login', current);
+        window.history.replaceState(null, '', '/admin/login');
+      }
+    }
+  }, [isLoading, isAuthenticated]);
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-stone-900 flex items-center justify-center p-4">
@@ -34,7 +57,17 @@ export const AdminProtectedRoute: React.FC<AdminProtectedRouteProps> = ({
   }
 
   if (!isAuthenticated || !user) {
-    return <AdminLogin />;
+    return (
+      <AdminLogin
+        onSuccess={() => {
+          if (typeof window !== 'undefined') {
+            const redirect = sessionStorage.getItem('mirch_admin_redirect_after_login') || '/admin';
+            sessionStorage.removeItem('mirch_admin_redirect_after_login');
+            window.history.replaceState(null, '', redirect);
+          }
+        }}
+      />
+    );
   }
 
   // Check role restrictions if specified

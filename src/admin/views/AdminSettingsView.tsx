@@ -9,8 +9,10 @@ import {
   Check,
   Save,
   Building,
+  Lock,
 } from 'lucide-react';
 import { AdminRestaurantSettings } from '../../types/admin';
+import { useAdminAuth } from '../context/AdminAuthContext';
 
 interface AdminSettingsViewProps {
   settings: AdminRestaurantSettings;
@@ -21,6 +23,9 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
   settings,
   onSaveSettings,
 }) => {
+  const { isOwner, hasPermission } = useAdminAuth();
+  const canUpdateSettings = isOwner || hasPermission('settings.update');
+
   const [formData, setFormData] = useState<AdminRestaurantSettings>(settings);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [savedSuccess, setSavedSuccess] = useState(false);
@@ -204,23 +209,30 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
             </span>
           )}
 
-          <button
-            type="submit"
-            disabled={isSubmitting}
-            className="px-6 py-2.5 bg-amber-500 hover:bg-amber-400 active:bg-amber-600 text-stone-950 font-bold rounded-xl text-sm flex items-center gap-2 shadow-lg shadow-amber-500/20 transition-all cursor-pointer disabled:opacity-50"
-          >
-            {isSubmitting ? (
-              <>
-                <span className="w-4 h-4 border-2 border-stone-950 border-t-transparent rounded-full animate-spin" />
-                <span>Saving to Google Sheets...</span>
-              </>
-            ) : (
-              <>
-                <Save className="w-4 h-4" />
-                <span>Save Restaurant Settings</span>
-              </>
-            )}
-          </button>
+          {canUpdateSettings ? (
+            <button
+              type="submit"
+              disabled={isSubmitting}
+              className="px-6 py-2.5 bg-amber-500 hover:bg-amber-400 active:bg-amber-600 text-stone-950 font-bold rounded-xl text-sm flex items-center gap-2 shadow-lg shadow-amber-500/20 transition-all cursor-pointer disabled:opacity-50"
+            >
+              {isSubmitting ? (
+                <>
+                  <span className="w-4 h-4 border-2 border-stone-950 border-t-transparent rounded-full animate-spin" />
+                  <span>Saving to Google Sheets...</span>
+                </>
+              ) : (
+                <>
+                  <Save className="w-4 h-4" />
+                  <span>Save Restaurant Settings</span>
+                </>
+              )}
+            </button>
+          ) : (
+            <div className="px-4 py-2 bg-stone-900 border border-stone-800 rounded-xl text-xs text-stone-400 flex items-center gap-2">
+              <Lock className="w-3.5 h-3.5 text-stone-500" />
+              <span>Settings configuration is restricted to Restaurant Owners</span>
+            </div>
+          )}
         </div>
       </form>
     </div>

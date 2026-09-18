@@ -10,10 +10,12 @@ import {
   CheckCircle2,
   XCircle,
   AlertTriangle,
+  Lock,
 } from 'lucide-react';
 import { AdminMenuItem } from '../../types/admin';
 import { MenuEditorModal } from '../components/MenuEditorModal';
 import { ConfirmationModal } from '../components/ConfirmationModal';
+import { useAdminAuth } from '../context/AdminAuthContext';
 
 interface AdminMenuViewProps {
   menu: AdminMenuItem[];
@@ -34,6 +36,12 @@ export const AdminMenuView: React.FC<AdminMenuViewProps> = ({
   isAddModalOpen = false,
   onCloseAddModal,
 }) => {
+  const { isOwner, isManager, isStaff, hasPermission } = useAdminAuth();
+  const canCreate = hasPermission('menu.create');
+  const canUpdate = hasPermission('menu.update');
+  const canDelete = isOwner || hasPermission('menu.delete');
+  const canToggle = hasPermission('menu.toggle');
+
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('ALL');
   const [dietaryFilter, setDietaryFilter] = useState<'ALL' | 'VEG' | 'NON_VEG'>('ALL');
@@ -116,14 +124,21 @@ export const AdminMenuView: React.FC<AdminMenuViewProps> = ({
           </p>
         </div>
 
-        <button
-          id="admin-add-dish-btn"
-          onClick={handleOpenAdd}
-          className="px-4 py-2.5 bg-amber-500 hover:bg-amber-400 active:bg-amber-600 text-stone-950 font-bold rounded-xl text-sm flex items-center justify-center gap-2 shadow-lg shadow-amber-500/20 transition-all cursor-pointer shrink-0"
-        >
-          <Plus className="w-4 h-4" />
-          <span>Add New Dish</span>
-        </button>
+        {canCreate ? (
+          <button
+            id="admin-add-dish-btn"
+            onClick={handleOpenAdd}
+            className="px-4 py-2.5 bg-amber-500 hover:bg-amber-400 active:bg-amber-600 text-stone-950 font-bold rounded-xl text-sm flex items-center justify-center gap-2 shadow-lg shadow-amber-500/20 transition-all cursor-pointer shrink-0"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Add New Dish</span>
+          </button>
+        ) : (
+          <div className="px-3 py-2 bg-stone-900 border border-stone-800 rounded-xl text-xs text-stone-400 flex items-center gap-2 shrink-0">
+            <Lock className="w-3.5 h-3.5 text-stone-500" />
+            <span>Adding dishes requires Manager/Owner role</span>
+          </div>
+        )}
       </div>
 
       {/* Filter and Search Bar */}
@@ -300,9 +315,12 @@ export const AdminMenuView: React.FC<AdminMenuViewProps> = ({
                     <td className="py-3 px-4 text-center">
                       <button
                         type="button"
-                        onClick={() => onToggleAvailability(item.id, !item.isAvailable)}
-                        title={item.isAvailable ? 'Click to mark Out of Stock' : 'Click to mark Available'}
-                        className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                        disabled={!canToggle}
+                        onClick={() => canToggle && onToggleAvailability(item.id, !item.isAvailable)}
+                        title={!canToggle ? 'Permission required to change availability' : item.isAvailable ? 'Click to mark Out of Stock' : 'Click to mark Available'}
+                        className={`relative inline-flex h-5 w-9 shrink-0 rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                          !canToggle ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'
+                        } ${
                           item.isAvailable ? 'bg-emerald-500' : 'bg-stone-700'
                         }`}
                       >
@@ -318,9 +336,12 @@ export const AdminMenuView: React.FC<AdminMenuViewProps> = ({
                     <td className="py-3 px-4 text-center">
                       <button
                         type="button"
-                        onClick={() => onTogglePopular(item.id, !item.isPopular)}
-                        title={item.isPopular ? 'Marked as Chef Special' : 'Click to feature as Popular'}
-                        className={`p-1 rounded-lg transition-colors cursor-pointer ${
+                        disabled={!canToggle}
+                        onClick={() => canToggle && onTogglePopular(item.id, !item.isPopular)}
+                        title={!canToggle ? 'Permission required to feature items' : item.isPopular ? 'Marked as Chef Special' : 'Click to feature as Popular'}
+                        className={`p-1 rounded-lg transition-colors ${
+                          !canToggle ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'
+                        } ${
                           item.isPopular
                             ? 'text-amber-400 bg-amber-500/10'
                             : 'text-stone-600 hover:text-stone-400'
@@ -333,20 +354,29 @@ export const AdminMenuView: React.FC<AdminMenuViewProps> = ({
                     {/* Actions */}
                     <td className="py-3 px-4 text-right">
                       <div className="inline-flex items-center gap-1">
-                        <button
-                          onClick={() => handleOpenEdit(item)}
-                          title="Edit Dish"
-                          className="p-1.5 text-stone-400 hover:text-amber-400 hover:bg-stone-800 rounded-lg transition-colors cursor-pointer"
-                        >
-                          <Edit2 className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => setDeletingItem(item)}
-                          title="Delete Dish"
-                          className="p-1.5 text-stone-400 hover:text-red-400 hover:bg-stone-800 rounded-lg transition-colors cursor-pointer"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                        {canUpdate && (
+                          <button
+                            onClick={() => handleOpenEdit(item)}
+                            title="Edit Dish"
+                            className="p-1.5 text-stone-400 hover:text-amber-400 hover:bg-stone-800 rounded-lg transition-colors cursor-pointer"
+                          >
+                            <Edit2 className="w-4 h-4" />
+                          </button>
+                        )}
+                        {canDelete && (
+                          <button
+                            onClick={() => setDeletingItem(item)}
+                            title="Delete Dish (Owner Only)"
+                            className="p-1.5 text-stone-400 hover:text-red-400 hover:bg-stone-800 rounded-lg transition-colors cursor-pointer"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
+                        {!canUpdate && !canDelete && (
+                          <span className="p-1.5 text-stone-600" title="Read-only access">
+                            <Lock className="w-3.5 h-3.5" />
+                          </span>
+                        )}
                       </div>
                     </td>
                   </tr>

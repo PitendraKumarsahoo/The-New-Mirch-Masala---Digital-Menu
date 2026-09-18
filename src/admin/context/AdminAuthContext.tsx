@@ -148,10 +148,19 @@ export const AdminAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     setSessionError(null);
   };
 
+  const role = user?.role || null;
+  const isOwner = !!user && user.isActive && user.role === 'OWNER';
+  const isManager = !!user && user.isActive && user.role === 'MANAGER';
+  const isStaff = !!user && user.isActive && user.role === 'STAFF';
+
   return (
     <AdminAuthContext.Provider
       value={{
         user,
+        role,
+        isOwner,
+        isManager,
+        isStaff,
         isAuthenticated: !!user && user.isActive,
         isLoading,
         restaurantId: user?.restaurantId || DEFAULT_RESTAURANT_ID,

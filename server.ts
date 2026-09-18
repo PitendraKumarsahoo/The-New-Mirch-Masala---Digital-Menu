@@ -27,6 +27,7 @@ export type AdminPermission =
   | 'rewards.create'
   | 'rewards.update'
   | 'rewards.toggle'
+  | 'rewards.redeem'
   | 'reviews.view'
   | 'reviews.respond'
   | 'settings.view'
@@ -52,6 +53,7 @@ const ROLE_PERMISSIONS: Record<AdminRole, AdminPermission[]> = {
     'rewards.create',
     'rewards.update',
     'rewards.toggle',
+    'rewards.redeem',
     'reviews.view',
     'reviews.respond',
     'settings.view',
@@ -70,6 +72,7 @@ const ROLE_PERMISSIONS: Record<AdminRole, AdminPermission[]> = {
     'visits.view',
     'visits.verify',
     'rewards.view',
+    'rewards.redeem',
     'reviews.view',
     'settings.view',
     'audit.view',
@@ -77,9 +80,80 @@ const ROLE_PERMISSIONS: Record<AdminRole, AdminPermission[]> = {
   STAFF: [
     'visits.view',
     'visits.verify',
+    'rewards.redeem',
     'customers.lookup',
   ],
 };
+
+// ----------------------------------------------------------------------
+// Concurrency Control & Mutex Helpers (Prevent Race Conditions)
+// ----------------------------------------------------------------------
+class AsyncMutex {
+  private queue: Array<() => void> = [];
+  private locked = false;
+
+  async acquire(): Promise<() => void> {
+    return new Promise((resolve) => {
+      const release = () => {
+        if (this.queue.length > 0) {
+          const next = this.queue.shift()!;
+          next();
+        } else {
+          this.locked = false;
+        }
+      };
+
+      if (!this.locked) {
+        this.locked = true;
+        resolve(release);
+      } else {
+        this.queue.push(() => resolve(release));
+      }
+    });
+  }
+}
+
+const visitMutex = new AsyncMutex();
+const rewardMutex = new AsyncMutex();
+const settingsMutex = new AsyncMutex();
+const staffMutex = new AsyncMutex();
+
+// ----------------------------------------------------------------------
+// Strict Input Validation Helpers
+// ----------------------------------------------------------------------
+function validatePhone(phone: any): { valid: boolean; normalized?: string; error?: string } {
+  if (!phone || typeof phone !== 'string') {
+    return { valid: false, error: 'Phone number is required.' };
+  }
+  const clean = phone.replace(/\D/g, '').slice(-10);
+  if (clean.length !== 10) {
+    return { valid: false, error: 'Please provide a valid 10-digit mobile number.' };
+  }
+  return { valid: true, normalized: clean };
+}
+
+function validateString(val: any, fieldName: string, min = 1, max = 255, required = true): { valid: boolean; value?: string; error?: string } {
+  if (val === undefined || val === null || String(val).trim() === '') {
+    if (required) return { valid: false, error: `${fieldName} is required.` };
+    return { valid: true, value: '' };
+  }
+  const s = String(val).trim();
+  if (s.length < min) return { valid: false, error: `${fieldName} must be at least ${min} characters.` };
+  if (s.length > max) return { valid: false, error: `${fieldName} cannot exceed ${max} characters.` };
+  return { valid: true, value: s };
+}
+
+function validateNumber(val: any, fieldName: string, min?: number, max?: number, required = true): { valid: boolean; value?: number; error?: string } {
+  if (val === undefined || val === null || String(val).trim() === '') {
+    if (required) return { valid: false, error: `${fieldName} is required.` };
+    return { valid: true, value: 0 };
+  }
+  const n = Number(val);
+  if (isNaN(n)) return { valid: false, error: `${fieldName} must be a valid number.` };
+  if (min !== undefined && n < min) return { valid: false, error: `${fieldName} must be at least ${min}.` };
+  if (max !== undefined && n > max) return { valid: false, error: `${fieldName} cannot exceed ${max}.` };
+  return { valid: true, value: n };
+}
 
 interface ServerUser {
   userId: string;
@@ -402,6 +476,18 @@ const serverRewards: StoredReward[] = [
   },
 ];
 
+interface StoredRedemption {
+  redemptionId: string;
+  customerId: string;
+  restaurantId: string;
+  rewardName: string;
+  redeemedAt: string;
+  verifiedBy: string;
+  status: 'REDEEMED';
+}
+
+const serverRedemptions: StoredRedemption[] = [];
+
 let serverRestaurantSettings = {
   restaurantId: 'mirch-masala-01',
   restaurantName: 'The New Mirch Masala',
@@ -706,91 +792,210 @@ async function startServer() {
     '/api/staff/verify-visit',
     authenticate,
     requirePermission('visits.verify'),
-    (req: AuthenticatedRequest, res) => {
-      const session = req.user!;
-      const { customerId, phone } = req.body || {};
+    async (req: AuthenticatedRequest, res) => {
+      const release = await visitMutex.acquire();
+      try {
+        const session = req.user!;
+        const { customerId, phone } = req.body || {};
 
-      if (!customerId && !phone) {
-        return res.status(400).json({
-          success: false,
-          error: 'Customer identification (customerId or phone) is required.',
-          errorCode: 'VALIDATION_ERROR',
-        });
-      }
+        if (!customerId && !phone) {
+          return res.status(400).json({
+            success: false,
+            error: 'Customer identification (customerId or phone) is required.',
+            errorCode: 'VALIDATION_ERROR',
+            timestamp: new Date().toISOString(),
+          });
+        }
 
-      const todayStr = getTodayKolkataDate();
-      const timeStr = getKolkataTimeFormatted();
-      const restaurantId = session.restaurantId;
+        const todayStr = getTodayKolkataDate();
+        const timeStr = getKolkataTimeFormatted();
+        const restaurantId = session.restaurantId;
 
-      // Check customer
-      let customer: StoredCustomer | undefined;
-      if (phone) {
-        const cleanPhone = String(phone).replace(/\D/g, '').slice(-10);
-        customer = serverCustomers.get(cleanPhone);
-      }
-      if (!customer && customerId) {
-        customer = Array.from(serverCustomers.values()).find(
-          (c) => c.customerId === customerId && c.restaurantId === restaurantId
+        // Check customer with validated input
+        let customer: StoredCustomer | undefined;
+        if (phone) {
+          const phoneVal = validatePhone(phone);
+          if (phoneVal.valid && phoneVal.normalized) {
+            customer = serverCustomers.get(phoneVal.normalized);
+          }
+        }
+        if (!customer && customerId) {
+          const idVal = validateString(customerId, 'Customer ID', 1, 100, true);
+          if (idVal.valid && idVal.value) {
+            customer = Array.from(serverCustomers.values()).find(
+              (c) => c.customerId === idVal.value && c.restaurantId === restaurantId
+            );
+          }
+        }
+
+        if (!customer) {
+          return res.status(404).json({
+            success: false,
+            error: 'Customer record not found. Please ensure customer is registered.',
+            errorCode: 'RESOURCE_NOT_FOUND',
+            timestamp: new Date().toISOString(),
+          });
+        }
+
+        // ANTI-FRAUD RULE: 1 verified visit per customer per restaurant per day
+        const alreadyVisited = serverVisits.some(
+          (v) =>
+            v.customerId === customer!.customerId &&
+            v.restaurantId === restaurantId &&
+            v.visitDate === todayStr &&
+            v.status === 'VERIFIED'
         );
-      }
 
-      if (!customer) {
-        return res.status(404).json({
-          success: false,
-          error: 'Customer record not found. Please ensure customer is registered.',
-          errorCode: 'RESOURCE_NOT_FOUND',
+        if (alreadyVisited) {
+          return res.json({
+            success: false,
+            alreadyVerified: true,
+            message: "Today's dine-in visit is already verified. Maximum 1 strike per day allowed.",
+            customer,
+            errorCode: 'DUPLICATE_VISIT',
+            timestamp: new Date().toISOString(),
+          });
+        }
+
+        // Record verified visit
+        const newVisit: StoredVisit = {
+          visitId: `VIS-${Date.now().toString(36).toUpperCase()}-${crypto.randomBytes(2).toString('hex').toUpperCase()}`,
+          customerId: customer.customerId,
+          customerName: customer.name,
+          mobile: customer.mobile,
+          restaurantId,
+          visitDate: todayStr,
+          visitTime: timeStr,
+          verifiedBy: `${session.name} (${session.role})`,
+          status: 'VERIFIED',
+        };
+
+        serverVisits.unshift(newVisit);
+        customer.totalVisits += 1;
+        customer.currentVisits += 1;
+        customer.lastVisitDate = todayStr;
+
+        // Milestone reward target check (every 10 visits gives 1 reward)
+        if (customer.currentVisits >= 10) {
+          customer.availableRewards += 1;
+        }
+
+        recordAuditLog(restaurantId, session, 'staff_visit_verify', 'visit', newVisit.visitId, {
+          customerId: customer.customerId,
+          customerName: customer.name,
+          totalVisits: customer.totalVisits,
+          date: todayStr,
         });
-      }
 
-      // ANTI-FRAUD RULE: 1 verified visit per customer per restaurant per day
-      const alreadyVisited = serverVisits.some(
-        (v) =>
-          v.customerId === customer!.customerId &&
-          v.restaurantId === restaurantId &&
-          v.visitDate === todayStr &&
-          v.status === 'VERIFIED'
-      );
-
-      if (alreadyVisited) {
         return res.json({
-          success: false,
-          alreadyVerified: true,
-          message: "Today's dine-in visit is already verified. Maximum 1 strike per day allowed.",
+          success: true,
+          message: `Dine-in verified! 1 Strike added. Total strikes: ${customer.totalVisits}`,
+          visit: newVisit,
           customer,
+          timestamp: new Date().toISOString(),
         });
+      } catch (err: any) {
+        return res.status(500).json({
+          success: false,
+          error: 'An unexpected error occurred while verifying visit.',
+          errorCode: 'SERVER_ERROR',
+          timestamp: new Date().toISOString(),
+        });
+      } finally {
+        release();
       }
+    }
+  );
 
-      // Record verified visit
-      const newVisit: StoredVisit = {
-        visitId: `VIS-${Date.now().toString(36).toUpperCase()}-${crypto.randomBytes(2).toString('hex').toUpperCase()}`,
-        customerId: customer.customerId,
-        customerName: customer.name,
-        mobile: customer.mobile,
-        restaurantId,
-        visitDate: todayStr,
-        visitTime: timeStr,
-        verifiedBy: `${session.name} (${session.role})`,
-        status: 'VERIFIED',
-      };
+  // POST /api/staff/redeem-reward
+  app.post(
+    '/api/staff/redeem-reward',
+    authenticate,
+    requirePermission('rewards.redeem'),
+    async (req: AuthenticatedRequest, res) => {
+      const release = await rewardMutex.acquire();
+      try {
+        const session = req.user!;
+        const { customerId, rewardName } = req.body || {};
 
-      serverVisits.unshift(newVisit);
-      customer.totalVisits += 1;
-      customer.currentVisits += 1;
-      customer.lastVisitDate = todayStr;
+        const customerIdVal = validateString(customerId, 'Customer ID', 1, 100, true);
+        if (!customerIdVal.valid) {
+          return res.status(400).json({
+            success: false,
+            error: customerIdVal.error,
+            errorCode: 'VALIDATION_ERROR',
+            timestamp: new Date().toISOString(),
+          });
+        }
 
-      recordAuditLog(restaurantId, session, 'staff_visit_verify', 'visit', newVisit.visitId, {
-        customerId: customer.customerId,
-        customerName: customer.name,
-        totalVisits: customer.totalVisits,
-        date: todayStr,
-      });
+        const rewardNameVal = validateString(rewardName || 'Milestone Reward', 'Reward Name', 1, 150, true);
+        const cleanRewardName = rewardNameVal.value!;
+        const restaurantId = session.restaurantId;
 
-      return res.json({
-        success: true,
-        message: `Dine-in verified! 1 Strike added. Total strikes: ${customer.totalVisits}`,
-        visit: newVisit,
-        customer,
-      });
+        const customer = Array.from(serverCustomers.values()).find(
+          (c) => c.customerId === customerIdVal.value && c.restaurantId === restaurantId
+        );
+
+        if (!customer) {
+          return res.status(404).json({
+            success: false,
+            error: 'Customer record not found for this restaurant.',
+            errorCode: 'RESOURCE_NOT_FOUND',
+            timestamp: new Date().toISOString(),
+          });
+        }
+
+        if (customer.availableRewards <= 0) {
+          return res.status(400).json({
+            success: false,
+            error: 'No available rewards to redeem for this customer.',
+            errorCode: 'VALIDATION_ERROR',
+            timestamp: new Date().toISOString(),
+          });
+        }
+
+        const redemptionId = `RED-${crypto.randomBytes(4).toString('hex').toUpperCase()}`;
+        const redeemedAt = new Date().toISOString();
+        const verifiedBy = `${session.name} (${session.role})`;
+
+        // Safely decrement available rewards and current visits cycle
+        customer.availableRewards = Math.max(0, customer.availableRewards - 1);
+        customer.currentVisits = Math.max(0, customer.currentVisits - 10);
+
+        const newRedemption: StoredRedemption = {
+          redemptionId,
+          customerId: customer.customerId,
+          restaurantId,
+          rewardName: cleanRewardName,
+          redeemedAt,
+          verifiedBy,
+          status: 'REDEEMED',
+        };
+        serverRedemptions.unshift(newRedemption);
+
+        recordAuditLog(restaurantId, session, 'staff_reward_redeem', 'reward', cleanRewardName, {
+          customerId: customer.customerId,
+          customerName: customer.name,
+          redemptionId,
+        });
+
+        return res.json({
+          success: true,
+          message: 'Reward redeemed successfully!',
+          redemption: newRedemption,
+          customer,
+          timestamp: new Date().toISOString(),
+        });
+      } catch (err: any) {
+        return res.status(500).json({
+          success: false,
+          error: 'An unexpected error occurred while redeeming reward.',
+          errorCode: 'SERVER_ERROR',
+          timestamp: new Date().toISOString(),
+        });
+      } finally {
+        release();
+      }
     }
   );
 
@@ -927,30 +1132,66 @@ async function startServer() {
     '/api/admin/rewards',
     authenticate,
     requirePermission('rewards.create'),
-    (req: AuthenticatedRequest, res) => {
-      const session = req.user!;
-      const { rewardName, rewardDescription, requiredVisits } = req.body || {};
+    async (req: AuthenticatedRequest, res) => {
+      const release = await rewardMutex.acquire();
+      try {
+        const session = req.user!;
+        const { rewardName, rewardDescription, requiredVisits } = req.body || {};
 
-      if (!rewardName || !requiredVisits) {
-        return res.status(400).json({ success: false, error: 'Reward name and visit target are required.' });
+        const nameVal = validateString(rewardName, 'Reward Name', 2, 100, true);
+        if (!nameVal.valid) {
+          return res.status(400).json({
+            success: false,
+            error: nameVal.error,
+            errorCode: 'VALIDATION_ERROR',
+            timestamp: new Date().toISOString(),
+          });
+        }
+
+        const visitsVal = validateNumber(requiredVisits, 'Required visits', 1, 100, true);
+        if (!visitsVal.valid) {
+          return res.status(400).json({
+            success: false,
+            error: visitsVal.error,
+            errorCode: 'VALIDATION_ERROR',
+            timestamp: new Date().toISOString(),
+          });
+        }
+
+        const descVal = validateString(rewardDescription, 'Description', 0, 300, false);
+        const visitsTarget = Math.round(visitsVal.value!);
+
+        const newReward: StoredReward = {
+          rewardId: `REW-${visitsTarget.toString().padStart(2, '0')}-${crypto.randomBytes(2).toString('hex').toUpperCase()}`,
+          restaurantId: session.restaurantId,
+          rewardName: nameVal.value!,
+          rewardDescription: descVal.value || '',
+          requiredVisits: visitsTarget,
+          isActive: true,
+          createdAt: getTodayKolkataDate(),
+        };
+
+        serverRewards.push(newReward);
+        recordAuditLog(session.restaurantId, session, 'reward_create', 'reward', newReward.rewardId, {
+          rewardName: newReward.rewardName,
+          requiredVisits: newReward.requiredVisits,
+        });
+
+        return res.json({
+          success: true,
+          reward: newReward,
+          timestamp: new Date().toISOString(),
+        });
+      } catch (err: any) {
+        return res.status(500).json({
+          success: false,
+          error: 'An unexpected error occurred while creating reward.',
+          errorCode: 'SERVER_ERROR',
+          timestamp: new Date().toISOString(),
+        });
+      } finally {
+        release();
       }
-
-      const newReward: StoredReward = {
-        rewardId: `REW-${requiredVisits.toString().padStart(2, '0')}`,
-        restaurantId: session.restaurantId,
-        rewardName: String(rewardName).trim(),
-        rewardDescription: String(rewardDescription || '').trim(),
-        requiredVisits: Number(requiredVisits),
-        isActive: true,
-        createdAt: getTodayKolkataDate(),
-      };
-
-      serverRewards.push(newReward);
-      recordAuditLog(session.restaurantId, session, 'reward_create', 'reward', newReward.rewardId, {
-        rewardName: newReward.rewardName,
-      });
-
-      return res.json({ success: true, reward: newReward });
     }
   );
 
@@ -959,19 +1200,50 @@ async function startServer() {
     '/api/admin/rewards/:id/toggle',
     authenticate,
     requirePermission('rewards.toggle'),
-    (req: AuthenticatedRequest, res) => {
-      const session = req.user!;
-      const { id } = req.params;
+    async (req: AuthenticatedRequest, res) => {
+      const release = await rewardMutex.acquire();
+      try {
+        const session = req.user!;
+        const { id } = req.params;
 
-      const reward = serverRewards.find((r) => r.rewardId === id && r.restaurantId === session.restaurantId);
-      if (!reward) {
-        return res.status(404).json({ success: false, error: 'Reward not found.' });
+        const idVal = validateString(id, 'Reward ID', 1, 100, true);
+        if (!idVal.valid) {
+          return res.status(400).json({
+            success: false,
+            error: idVal.error,
+            errorCode: 'VALIDATION_ERROR',
+            timestamp: new Date().toISOString(),
+          });
+        }
+
+        const reward = serverRewards.find((r) => r.rewardId === idVal.value && r.restaurantId === session.restaurantId);
+        if (!reward) {
+          return res.status(404).json({
+            success: false,
+            error: 'Reward not found.',
+            errorCode: 'RESOURCE_NOT_FOUND',
+            timestamp: new Date().toISOString(),
+          });
+        }
+
+        reward.isActive = !reward.isActive;
+        recordAuditLog(session.restaurantId, session, 'reward_toggle', 'reward', idVal.value!, { isActive: reward.isActive });
+
+        return res.json({
+          success: true,
+          reward,
+          timestamp: new Date().toISOString(),
+        });
+      } catch (err: any) {
+        return res.status(500).json({
+          success: false,
+          error: 'An unexpected error occurred while toggling reward status.',
+          errorCode: 'SERVER_ERROR',
+          timestamp: new Date().toISOString(),
+        });
+      } finally {
+        release();
       }
-
-      reward.isActive = !reward.isActive;
-      recordAuditLog(session.restaurantId, session, 'reward_toggle', 'reward', id, { isActive: reward.isActive });
-
-      return res.json({ success: true, reward });
     }
   );
 
@@ -990,23 +1262,75 @@ async function startServer() {
     '/api/admin/settings',
     authenticate,
     requirePermission('settings.update'),
-    (req: AuthenticatedRequest, res) => {
-      const session = req.user!;
-      const updates = req.body || {};
+    async (req: AuthenticatedRequest, res) => {
+      const release = await settingsMutex.acquire();
+      try {
+        const session = req.user!;
+        const updates = req.body || {};
 
-      serverRestaurantSettings = {
-        ...serverRestaurantSettings,
-        restaurantName: updates.restaurantName || serverRestaurantSettings.restaurantName,
-        tagline: updates.tagline || serverRestaurantSettings.tagline,
-        location: updates.location || serverRestaurantSettings.location,
-        phone: updates.phone || serverRestaurantSettings.phone,
-        openingTime: updates.openingTime || serverRestaurantSettings.openingTime,
-        closingTime: updates.closingTime || serverRestaurantSettings.closingTime,
-        googleReviewUrl: updates.googleReviewUrl || serverRestaurantSettings.googleReviewUrl,
-      };
+        if (updates.restaurantName !== undefined) {
+          const nameVal = validateString(updates.restaurantName, 'Restaurant Name', 2, 100, true);
+          if (!nameVal.valid) {
+            return res.status(400).json({
+              success: false,
+              error: nameVal.error,
+              errorCode: 'VALIDATION_ERROR',
+              timestamp: new Date().toISOString(),
+            });
+          }
+        }
 
-      recordAuditLog(session.restaurantId, session, 'restaurant_update', 'settings', session.restaurantId);
-      return res.json({ success: true, settings: serverRestaurantSettings });
+        if (updates.phone !== undefined) {
+          const phoneVal = validateString(updates.phone, 'Phone', 5, 50, true);
+          if (!phoneVal.valid) {
+            return res.status(400).json({
+              success: false,
+              error: phoneVal.error,
+              errorCode: 'VALIDATION_ERROR',
+              timestamp: new Date().toISOString(),
+            });
+          }
+        }
+
+        if (updates.googleReviewUrl !== undefined && updates.googleReviewUrl.trim()) {
+          const urlVal = validateString(updates.googleReviewUrl, 'Google Review URL', 10, 500, false);
+          if (!urlVal.valid) {
+            return res.status(400).json({
+              success: false,
+              error: urlVal.error,
+              errorCode: 'VALIDATION_ERROR',
+              timestamp: new Date().toISOString(),
+            });
+          }
+        }
+
+        serverRestaurantSettings = {
+          ...serverRestaurantSettings,
+          restaurantName: updates.restaurantName ? String(updates.restaurantName).trim() : serverRestaurantSettings.restaurantName,
+          tagline: updates.tagline !== undefined ? String(updates.tagline).trim() : serverRestaurantSettings.tagline,
+          location: updates.location !== undefined ? String(updates.location).trim() : serverRestaurantSettings.location,
+          phone: updates.phone !== undefined ? String(updates.phone).trim() : serverRestaurantSettings.phone,
+          openingTime: updates.openingTime !== undefined ? String(updates.openingTime).trim() : serverRestaurantSettings.openingTime,
+          closingTime: updates.closingTime !== undefined ? String(updates.closingTime).trim() : serverRestaurantSettings.closingTime,
+          googleReviewUrl: updates.googleReviewUrl !== undefined ? String(updates.googleReviewUrl).trim() : serverRestaurantSettings.googleReviewUrl,
+        };
+
+        recordAuditLog(session.restaurantId, session, 'restaurant_update', 'settings', session.restaurantId);
+        return res.json({
+          success: true,
+          settings: serverRestaurantSettings,
+          timestamp: new Date().toISOString(),
+        });
+      } catch (err: any) {
+        return res.status(500).json({
+          success: false,
+          error: 'An unexpected error occurred while updating settings.',
+          errorCode: 'SERVER_ERROR',
+          timestamp: new Date().toISOString(),
+        });
+      } finally {
+        release();
+      }
     }
   );
 
@@ -1044,64 +1368,100 @@ async function startServer() {
     '/api/admin/staff',
     authenticate,
     requirePermission('staff.manage'),
-    (req: AuthenticatedRequest, res) => {
-      const session = req.user!;
-      const { username, name, email, role, title, password } = req.body || {};
+    async (req: AuthenticatedRequest, res) => {
+      const release = await staffMutex.acquire();
+      try {
+        const session = req.user!;
+        const { username, name, email, role, title, password } = req.body || {};
 
-      const cleanUser = String(username || '').trim().toLowerCase();
-      const cleanPass = String(password || '').trim();
-      const cleanName = String(name || '').trim();
-      const assignedRole: AdminRole = role === 'MANAGER' ? 'MANAGER' : 'STAFF';
+        const userVal = validateString(username, 'Username', 3, 30, true);
+        if (!userVal.valid) {
+          return res.status(400).json({
+            success: false,
+            error: userVal.error,
+            errorCode: 'VALIDATION_ERROR',
+            timestamp: new Date().toISOString(),
+          });
+        }
+        const cleanUser = userVal.value!.toLowerCase();
 
-      if (!cleanUser || !cleanPass || !cleanName) {
-        return res.status(400).json({
-          success: false,
-          error: 'Username, name, and temporary password are required.',
-          errorCode: 'VALIDATION_ERROR',
+        const nameVal = validateString(name, 'Full Name', 2, 80, true);
+        if (!nameVal.valid) {
+          return res.status(400).json({
+            success: false,
+            error: nameVal.error,
+            errorCode: 'VALIDATION_ERROR',
+            timestamp: new Date().toISOString(),
+          });
+        }
+        const cleanName = nameVal.value!;
+
+        const passVal = validateString(password, 'Temporary Password', 6, 100, true);
+        if (!passVal.valid) {
+          return res.status(400).json({
+            success: false,
+            error: passVal.error,
+            errorCode: 'VALIDATION_ERROR',
+            timestamp: new Date().toISOString(),
+          });
+        }
+        const cleanPass = passVal.value!;
+
+        const assignedRole: AdminRole = role === 'MANAGER' ? 'MANAGER' : 'STAFF';
+
+        if (users.has(cleanUser)) {
+          return res.status(409).json({
+            success: false,
+            error: 'An account with this username already exists.',
+            errorCode: 'VALIDATION_ERROR',
+            timestamp: new Date().toISOString(),
+          });
+        }
+
+        const salt = generateSalt();
+        const newUser: ServerUser = {
+          userId: cleanUser,
+          restaurantId: session.restaurantId,
+          name: cleanName,
+          email: email ? String(email).trim() : `${cleanUser}@mirchmasala.com`,
+          role: assignedRole,
+          passwordSalt: salt,
+          passwordHash: hashPassword(cleanPass, salt),
+          title: title ? String(title).trim() : `${assignedRole} Member`,
+          isActive: true,
+          createdAt: new Date().toISOString(),
+        };
+
+        users.set(cleanUser, newUser);
+        recordAuditLog(session.restaurantId, session, 'staff_account_create', 'staff', cleanUser, {
+          role: assignedRole,
+          name: cleanName,
         });
-      }
 
-      if (users.has(cleanUser)) {
-        return res.status(409).json({
-          success: false,
-          error: 'An account with this username already exists.',
-          errorCode: 'VALIDATION_ERROR',
+        return res.json({
+          success: true,
+          user: {
+            userId: newUser.userId,
+            restaurantId: newUser.restaurantId,
+            name: newUser.name,
+            email: newUser.email,
+            role: newUser.role,
+            title: newUser.title,
+            isActive: newUser.isActive,
+            createdAt: newUser.createdAt,
+          },
+          timestamp: new Date().toISOString(),
         });
+      } catch (err: any) {
+        return res.status(500).json({
+          success: false,
+          error: 'An unexpected error occurred while creating staff account.',
+          errorCode: 'SERVER_ERROR',
+          timestamp: new Date().toISOString(),
+        });
+      } finally {
+        release();
       }
-
-      const salt = generateSalt();
-      const newUser: ServerUser = {
-        userId: cleanUser,
-        restaurantId: session.restaurantId,
-        name: cleanName,
-        email: email ? String(email).trim() : `${cleanUser}@mirchmasala.com`,
-        role: assignedRole,
-        passwordSalt: salt,
-        passwordHash: hashPassword(cleanPass, salt),
-        title: title ? String(title).trim() : `${assignedRole} Member`,
-        isActive: true,
-        createdAt: new Date().toISOString(),
-      };
-
-      users.set(cleanUser, newUser);
-      recordAuditLog(session.restaurantId, session, 'staff_account_create', 'staff', cleanUser, {
-        role: assignedRole,
-        name: cleanName,
-      });
-
-      return res.json({
-        success: true,
-        user: {
-          userId: newUser.userId,
-          restaurantId: newUser.restaurantId,
-          name: newUser.name,
-          email: newUser.email,
-          role: newUser.role,
-          title: newUser.title,
-          isActive: newUser.isActive,
-          createdAt: newUser.createdAt,
-        },
-      });
     }
   );
 
@@ -1110,48 +1470,67 @@ async function startServer() {
     '/api/admin/staff/:id/toggle',
     authenticate,
     requirePermission('staff.manage'),
-    (req: AuthenticatedRequest, res) => {
-      const session = req.user!;
-      const staffId = String(req.params.id || '').toLowerCase();
+    async (req: AuthenticatedRequest, res) => {
+      const release = await staffMutex.acquire();
+      try {
+        const session = req.user!;
+        const staffId = String(req.params.id || '').toLowerCase();
 
-      // Protect owner from deactivating themselves
-      if (staffId === session.userId.toLowerCase()) {
-        return res.status(400).json({
-          success: false,
-          error: 'You cannot deactivate your own administrative account.',
-          errorCode: 'VALIDATION_ERROR',
-        });
-      }
+        // Protect owner from deactivating themselves
+        if (staffId === session.userId.toLowerCase()) {
+          return res.status(400).json({
+            success: false,
+            error: 'You cannot deactivate your own administrative account.',
+            errorCode: 'VALIDATION_ERROR',
+            timestamp: new Date().toISOString(),
+          });
+        }
 
-      const target = users.get(staffId);
-      if (!target || target.restaurantId !== session.restaurantId) {
-        return res.status(404).json({ success: false, error: 'Staff account not found.' });
-      }
+        const target = users.get(staffId);
+        if (!target || target.restaurantId !== session.restaurantId) {
+          return res.status(404).json({
+            success: false,
+            error: 'Staff account not found.',
+            errorCode: 'RESOURCE_NOT_FOUND',
+            timestamp: new Date().toISOString(),
+          });
+        }
 
-      target.isActive = !target.isActive;
+        target.isActive = !target.isActive;
 
-      // Invalidate any active sessions if deactivated
-      if (!target.isActive) {
-        for (const [tok, s] of sessions.entries()) {
-          if (s.userId.toLowerCase() === staffId) {
-            sessions.delete(tok);
+        // Invalidate any active sessions if deactivated
+        if (!target.isActive) {
+          for (const [tok, s] of sessions.entries()) {
+            if (s.userId.toLowerCase() === staffId) {
+              sessions.delete(tok);
+            }
           }
         }
-      }
 
-      recordAuditLog(session.restaurantId, session, 'staff_account_toggle', 'staff', staffId, {
-        isActive: target.isActive,
-      });
-
-      return res.json({
-        success: true,
-        user: {
-          userId: target.userId,
-          name: target.name,
-          role: target.role,
+        recordAuditLog(session.restaurantId, session, 'staff_account_toggle', 'staff', staffId, {
           isActive: target.isActive,
-        },
-      });
+        });
+
+        return res.json({
+          success: true,
+          user: {
+            userId: target.userId,
+            name: target.name,
+            role: target.role,
+            isActive: target.isActive,
+          },
+          timestamp: new Date().toISOString(),
+        });
+      } catch (err: any) {
+        return res.status(500).json({
+          success: false,
+          error: 'An unexpected error occurred while toggling staff status.',
+          errorCode: 'SERVER_ERROR',
+          timestamp: new Date().toISOString(),
+        });
+      } finally {
+        release();
+      }
     }
   );
 
