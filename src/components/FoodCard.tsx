@@ -1,7 +1,8 @@
+import React from 'react';
 import { MenuItem } from '../types';
 import { VegBadge } from './VegBadge';
 import { ImageWithFallback } from './ImageWithFallback';
-import { Flame, Heart } from 'lucide-react';
+import { Flame, Heart, Plus, Minus } from 'lucide-react';
 import { useCustomerPreferences } from '../services/customerProfileService';
 
 interface FoodCardProps {
@@ -11,8 +12,16 @@ interface FoodCardProps {
 }
 
 export function FoodCard({ item, onSelect }: FoodCardProps) {
-  const { isFavorite, toggleFavorite } = useCustomerPreferences();
+  const {
+    isFavorite,
+    toggleFavorite,
+    getQuantity,
+    incrementQuantity,
+    decrementQuantity,
+  } = useCustomerPreferences();
+
   const isFav = isFavorite(item.id);
+  const qty = getQuantity(item.id);
 
   const hasSecondary =
     typeof item.secondaryPrice === 'number' &&
@@ -26,6 +35,16 @@ export function FoodCard({ item, onSelect }: FoodCardProps) {
   const handleFavoriteClick = (e: React.MouseEvent) => {
     e.stopPropagation();
     toggleFavorite(item.id);
+  };
+
+  const handleIncrement = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    incrementQuantity(item.id);
+  };
+
+  const handleDecrement = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    decrementQuantity(item.id);
   };
 
   return (
@@ -64,7 +83,7 @@ export function FoodCard({ item, onSelect }: FoodCardProps) {
             type="button"
             onClick={handleFavoriteClick}
             aria-label={isFav ? `Remove ${item.name} from favorites` : `Add ${item.name} to favorites`}
-            className={`absolute top-1.5 right-1.5 z-10 w-6 h-6 rounded-full flex items-center justify-center transition-transform active:scale-75 ${
+            className={`absolute top-1.5 right-1.5 z-10 w-6 h-6 rounded-full flex items-center justify-center transition-transform active:scale-75 cursor-pointer ${
               isFav
                 ? 'bg-rose-500 text-white shadow-sm'
                 : 'bg-black/35 text-white/90 hover:bg-black/60 hover:text-white backdrop-blur-[2px]'
@@ -107,18 +126,58 @@ export function FoodCard({ item, onSelect }: FoodCardProps) {
             </p>
           )}
 
-          {/* Price & Availability row */}
-          <div className="flex items-center justify-between">
-            <div className="flex items-baseline gap-1">
-              <span className="text-[12px] sm:text-[13px] font-bold text-slate-900">
+          {/* Price & Quantity / Add Controls row */}
+          <div className="flex items-center justify-between gap-2 mt-1">
+            <div className="flex flex-col">
+              <span className="text-[12px] sm:text-[13px] font-bold text-slate-900 leading-tight">
                 {priceDisplay}
               </span>
+              {qty > 1 && (
+                <span className="text-[10px] text-emerald-600 font-semibold leading-tight">
+                  Total: ₹{(Number(item.price) || 0) * qty}
+                </span>
+              )}
             </div>
 
             {item.isAvailable ? (
-              <span className="text-[9px] font-bold text-green-600 bg-green-50 border border-green-100 px-2 py-0.5 rounded tracking-wider uppercase">
-                AVAILABLE
-              </span>
+              qty > 0 ? (
+                /* Quantity Stepper on Card */
+                <div
+                  className="inline-flex items-center bg-orange-600 text-white rounded-xl shadow-xs border border-orange-700/30 overflow-hidden"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <button
+                    type="button"
+                    onClick={handleDecrement}
+                    className="w-6 h-6 flex items-center justify-center hover:bg-orange-700 active:bg-orange-800 transition-colors cursor-pointer"
+                    aria-label={`Decrease ${item.name} quantity`}
+                  >
+                    <Minus className="w-3 h-3" />
+                  </button>
+                  <span className="px-1.5 text-[11px] font-black min-w-[20px] text-center">
+                    {qty}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleIncrement}
+                    className="w-6 h-6 flex items-center justify-center hover:bg-orange-700 active:bg-orange-800 transition-colors cursor-pointer"
+                    aria-label={`Increase ${item.name} quantity`}
+                  >
+                    <Plus className="w-3 h-3" />
+                  </button>
+                </div>
+              ) : (
+                /* + ADD Button on Card */
+                <button
+                  type="button"
+                  onClick={handleIncrement}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-orange-50 hover:bg-orange-100 text-orange-700 font-bold text-[11px] border border-orange-200/80 active:scale-95 transition-all shadow-2xs cursor-pointer"
+                  aria-label={`Add ${item.name} to favorites and order`}
+                >
+                  <Plus className="w-3 h-3 stroke-[2.5]" />
+                  <span>ADD</span>
+                </button>
+              )
             ) : (
               <span className="text-[9px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded uppercase tracking-wider">
                 SOLD OUT

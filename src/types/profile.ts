@@ -8,6 +8,7 @@ export interface CustomerPreferences {
   dietaryPreference: DietaryPreference;
   specialInstructions: string;
   favoriteDishIds: string[];
+  favoriteQuantities?: Record<string, number>;
   lastUpdated: string;
 }
 

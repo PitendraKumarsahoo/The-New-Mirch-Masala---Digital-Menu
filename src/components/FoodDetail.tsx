@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { X, ArrowLeft, Flame, Sparkles, Heart, Check } from 'lucide-react';
+import { X, ArrowLeft, Flame, Sparkles, Heart, Check, Plus, Minus, ShoppingBag } from 'lucide-react';
 import { MenuItem } from '../types';
 import { VegBadge } from './VegBadge';
 import { ImageWithFallback } from './ImageWithFallback';
@@ -12,7 +12,14 @@ interface FoodDetailProps {
 }
 
 export function FoodDetail({ item, onClose }: FoodDetailProps) {
-  const { preferences, isFavorite, toggleFavorite } = useCustomerPreferences();
+  const {
+    preferences,
+    isFavorite,
+    toggleFavorite,
+    getQuantity,
+    incrementQuantity,
+    decrementQuantity,
+  } = useCustomerPreferences();
   // Lock body scroll when modal is open
   useEffect(() => {
     if (item) {
@@ -219,23 +226,97 @@ export function FoodDetail({ item, onClose }: FoodDetailProps) {
             </p>
           </div>
 
-          {/* Notice: Menu Only notice */}
-          <div className="mt-5 p-3 rounded-2xl bg-orange-50/60 border border-orange-200/50 text-center">
-            <p className="text-xs font-medium text-orange-900">
-              Please convey your order directly to our dining staff or call our counter.
-            </p>
-          </div>
+          {/* Quantity Stepper & Price Calculation Row */}
+          {item.isAvailable && (
+            <div className="mt-5 p-3.5 rounded-2xl bg-stone-50 border border-stone-200/80 space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <span className="text-xs font-bold text-stone-800 block">
+                    Select Portions
+                  </span>
+                  <span className="text-[11px] text-stone-500">
+                    Add 1x, 2x, 3x directly to your dining order
+                  </span>
+                </div>
+
+                {/* Stepper */}
+                <div className="inline-flex items-center bg-white rounded-xl p-1 border border-stone-200 shadow-2xs">
+                  <button
+                    type="button"
+                    onClick={() => decrementQuantity(item.id)}
+                    disabled={getQuantity(item.id) === 0}
+                    className="w-8 h-8 rounded-lg bg-stone-100 hover:bg-stone-200 text-stone-700 flex items-center justify-center transition-all active:scale-90 disabled:opacity-30 cursor-pointer"
+                    aria-label={`Decrease ${item.name} quantity`}
+                  >
+                    <Minus className="w-3.5 h-3.5" />
+                  </button>
+
+                  <span className="w-10 text-center text-sm font-black text-stone-900">
+                    {getQuantity(item.id)}
+                  </span>
+
+                  <button
+                    type="button"
+                    onClick={() => incrementQuantity(item.id)}
+                    className="w-8 h-8 rounded-lg bg-orange-600 hover:bg-orange-700 text-white flex items-center justify-center transition-all active:scale-90 shadow-2xs cursor-pointer"
+                    aria-label={`Increase ${item.name} quantity`}
+                  >
+                    <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Item Subtotal Calculation */}
+              <div className="pt-2 border-t border-stone-200/60 flex items-center justify-between">
+                <span className="text-xs text-stone-500 font-medium">
+                  {getQuantity(item.id) > 0 ? (
+                    <>
+                      {getQuantity(item.id)} portion{getQuantity(item.id) > 1 ? 's' : ''} × ₹{item.price}
+                    </>
+                  ) : (
+                    'Base price per portion'
+                  )}
+                </span>
+                <span className="text-sm font-black text-stone-900">
+                  ₹{((Number(item.price) || 0) * Math.max(1, getQuantity(item.id))).toLocaleString('en-IN')}
+                </span>
+              </div>
+            </div>
+          )}
+
+          {/* Quick Action Button: Add/Update Order */}
+          {item.isAvailable && (
+            <div className="mt-3">
+              <button
+                type="button"
+                onClick={() => {
+                  if (getQuantity(item.id) === 0) {
+                    incrementQuantity(item.id);
+                  }
+                  onClose();
+                }}
+                className="w-full py-3.5 px-4 rounded-2xl bg-orange-600 hover:bg-orange-500 text-white font-bold text-sm tracking-wide active:scale-[0.99] transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer"
+              >
+                <ShoppingBag className="w-4 h-4" />
+                <span>
+                  {getQuantity(item.id) > 0
+                    ? `Save ${getQuantity(item.id)} in Favorites & Order • ₹${(Number(item.price) || 0) * getQuantity(item.id)}`
+                    : `Add to Favorites & Order • ₹${item.price}`}
+                </span>
+              </button>
+            </div>
+          )}
 
           {/* Close/Back Button */}
-          <div className="mt-5 pt-3">
+          <div className="mt-2 pt-1">
             <button
               type="button"
               id="close-food-detail-btn"
               onClick={onClose}
-              className="w-full py-3.5 px-4 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-sm tracking-wide active:scale-[0.99] transition-all shadow-md flex items-center justify-center gap-2"
+              className="w-full py-3 px-4 rounded-2xl bg-stone-100 hover:bg-stone-200 text-stone-700 font-bold text-xs tracking-wide active:scale-[0.99] transition-all flex items-center justify-center gap-2 cursor-pointer"
             >
               <ArrowLeft className="w-4 h-4" />
-              <span>Back to Menu</span>
+              <span>Continue Browsing Menu</span>
             </button>
           </div>
         </div>
