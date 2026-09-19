@@ -1,8 +1,10 @@
 import { useEffect } from 'react';
-import { X, ArrowLeft, Flame, Sparkles } from 'lucide-react';
+import { X, ArrowLeft, Flame, Sparkles, Heart, Check } from 'lucide-react';
 import { MenuItem } from '../types';
 import { VegBadge } from './VegBadge';
 import { ImageWithFallback } from './ImageWithFallback';
+import { useCustomerPreferences } from '../services/customerProfileService';
+import { SPICE_LEVEL_CONFIG } from '../types/profile';
 
 interface FoodDetailProps {
   item: MenuItem | null;
@@ -10,6 +12,7 @@ interface FoodDetailProps {
 }
 
 export function FoodDetail({ item, onClose }: FoodDetailProps) {
+  const { preferences, isFavorite, toggleFavorite } = useCustomerPreferences();
   // Lock body scroll when modal is open
   useEffect(() => {
     if (item) {
@@ -66,14 +69,29 @@ export function FoodDetail({ item, onClose }: FoodDetailProps) {
             <span>Back</span>
           </button>
 
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close details"
-            className="pointer-events-auto p-2 rounded-full bg-slate-900/80 hover:bg-slate-900 text-white backdrop-blur-md shadow-md active:scale-95 transition-all"
-          >
-            <X className="w-4 h-4" />
-          </button>
+          <div className="pointer-events-auto flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => toggleFavorite(item.id)}
+              aria-label={isFavorite(item.id) ? "Remove from favorites" : "Add to favorites"}
+              className={`p-2 rounded-full backdrop-blur-md shadow-md active:scale-95 transition-all ${
+                isFavorite(item.id)
+                  ? 'bg-rose-500 text-white'
+                  : 'bg-slate-900/80 hover:bg-slate-900 text-white'
+              }`}
+            >
+              <Heart className={`w-4 h-4 ${isFavorite(item.id) ? 'fill-white stroke-white' : ''}`} />
+            </button>
+
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close details"
+              className="p-2 rounded-full bg-slate-900/80 hover:bg-slate-900 text-white backdrop-blur-md shadow-md active:scale-95 transition-all"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
         </div>
 
         {/* Large Food Image Hero */}
@@ -124,13 +142,27 @@ export function FoodDetail({ item, onClose }: FoodDetailProps) {
             )}
           </div>
 
-          {/* Dish Name */}
-          <h2
-            id="food-detail-title"
-            className="text-2xl font-black text-slate-800 tracking-tight mt-1 uppercase"
-          >
-            {item.name}
-          </h2>
+          {/* Dish Name & Favorite Button */}
+          <div className="flex items-start justify-between gap-3 mt-1">
+            <h2
+              id="food-detail-title"
+              className="text-2xl font-black text-slate-800 tracking-tight uppercase"
+            >
+              {item.name}
+            </h2>
+            <button
+              type="button"
+              onClick={() => toggleFavorite(item.id)}
+              className={`shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border transition-all cursor-pointer ${
+                isFavorite(item.id)
+                  ? 'bg-rose-50 text-rose-700 border-rose-200 shadow-xs'
+                  : 'bg-stone-50 text-stone-600 border-stone-200 hover:bg-stone-100'
+              }`}
+            >
+              <Heart className={`w-3.5 h-3.5 ${isFavorite(item.id) ? 'fill-rose-500 text-rose-500' : 'text-stone-400'}`} />
+              <span>{isFavorite(item.id) ? 'Saved' : 'Save'}</span>
+            </button>
+          </div>
 
           {/* Price */}
           <div className="mt-2 flex items-baseline gap-2">
@@ -155,6 +187,14 @@ export function FoodDetail({ item, onClose }: FoodDetailProps) {
                   {item.spicyLevel === 1 ? 'Mild' : item.spicyLevel === 2 ? 'Medium Spicy' : 'Fiery Hot'}
                 </span>
                 <span>{'🌶️'.repeat(item.spicyLevel)}</span>
+              </div>
+            )}
+
+            {/* Check if matches preferred spice level */}
+            {item.spicyLevel && item.spicyLevel === SPICE_LEVEL_CONFIG[preferences.spiceLevel || 'medium'].spiceValue && (
+              <div className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-amber-50 text-amber-900 text-xs font-bold border border-amber-200">
+                <Check className="w-3 h-3 text-amber-600 stroke-[3]" />
+                <span>Matches your spice taste ({SPICE_LEVEL_CONFIG[preferences.spiceLevel || 'medium'].peppers})</span>
               </div>
             )}
 

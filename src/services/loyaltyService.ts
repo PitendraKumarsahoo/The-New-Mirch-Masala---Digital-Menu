@@ -1,4 +1,4 @@
-import { Customer, Visit, LoyaltyStatus, RewardTier } from '../types';
+import { Customer, Visit, LoyaltyStatus, RewardTier, RewardRedemption } from '../types';
 import { API_BASE_URL } from '../config/api';
 import { LOYALTY_CONFIG, REWARD_TIERS } from '../config/loyaltyConfig';
 
@@ -187,7 +187,35 @@ function getInitialSeedDB(): LocalLoyaltyDB {
   return {
     customers: demoCustomers,
     visits: demoVisits,
-    redemptions: [],
+    redemptions: [
+      {
+        redemptionId: 'RED-8K21-A',
+        customerId: 'CUS-PRIYA77',
+        restaurantId: 'mirch-masala-01',
+        rewardName: '₹50 OFF on Order Above ₹300',
+        rewardTierId: 'tier-3',
+        redeemedAt: `${yesterdayStr} 01:25 PM`,
+        verifiedBy: 'Vikram Singh (Manager)',
+      },
+      {
+        redemptionId: 'RED-9N44-B',
+        customerId: 'CUS-ROHAN99',
+        restaurantId: 'mirch-masala-01',
+        rewardName: '20% OFF on Dining Bill',
+        rewardTierId: 'tier-6',
+        redeemedAt: `${twoDaysAgoStr} 09:30 PM`,
+        verifiedBy: 'Pooja Verma (Staff)',
+      },
+      {
+        redemptionId: 'RED-5M19-C',
+        customerId: 'CUS-AMIT88',
+        restaurantId: 'mirch-masala-01',
+        rewardName: 'Special Complimentary Dessert',
+        rewardTierId: 'tier-welcome',
+        redeemedAt: `${yesterdayStr} 08:50 PM`,
+        verifiedBy: 'Rajesh Sharma (Owner)',
+      },
+    ],
   };
 }
 
@@ -207,6 +235,11 @@ function getLocalDB(): LocalLoyaltyDB {
       const initial = getInitialSeedDB();
       saveLocalDB(initial);
       return initial;
+    }
+    // Ensure redemptions array exists and has demo entries if empty
+    if (!parsed.redemptions || parsed.redemptions.length === 0) {
+      parsed.redemptions = getInitialSeedDB().redemptions;
+      saveLocalDB(parsed);
     }
     return parsed;
   } catch {
@@ -861,4 +894,91 @@ export async function redeemCustomerReward(
 export function getDemoCustomers(): Customer[] {
   const db = getLocalDB();
   return db.customers;
+}
+
+/**
+ * Fetches customer's full activity history including past visit dates and redemption history
+ */
+export async function fetchCustomerActivityHistory(
+  customerId?: string,
+  rawPhone?: string,
+  restaurantId = 'mirch-masala-01'
+): Promise<{
+  success: boolean;
+  visits: Visit[];
+  redemptions: RewardRedemption[];
+  customer?: Customer | null;
+  error?: string;
+}> {
+  const phone = normalizePhoneNumber(rawPhone || '');
+
+  // 1. Try server endpoint
+  try {
+    const params = new URLSearchParams();
+    if (customerId) params.append('customerId', customerId);
+    if (phone) params.append('phone', phone);
+    if (restaurantId) params.append('restaurantId', restaurantId);
+
+    const res = await fetch(`/api/customer/activity?${params.toString()}`);
+    if (res.ok) {
+      const data = await res.json();
+      if (data && data.success) {
+        return {
+          success: true,
+          visits: data.visits || [],
+          redemptions: (data.redemptions || []).map((r: any) => ({
+            ...r,
+            status: r.status || 'REDEEMED',
+          })),
+          customer: data.customer || null,
+        };
+      }
+    }
+  } catch {
+    // Network or preview offline fallback: seamlessly use local storage
+  }
+
+  // 2. Resilient local DB lookup
+  const db = getLocalDB();
+  let matchedCustomer: Customer | undefined;
+
+  if (customerId) {
+    matchedCustomer = db.customers.find(
+      (c) => c.customerId === customerId && (!c.restaurantId || c.restaurantId === restaurantId)
+    );
+  }
+  if (!matchedCustomer && phone) {
+    matchedCustomer = db.customers.find(
+      (c) => c.phone === phone && (!c.restaurantId || c.restaurantId === restaurantId)
+    );
+  }
+
+  const effectiveCustId = matchedCustomer ? matchedCustomer.customerId : customerId;
+
+  const visits = db.visits
+    .filter(
+      (v) =>
+        (v.customerId === effectiveCustId || (matchedCustomer && v.customerId === matchedCustomer.customerId)) &&
+        (!v.restaurantId || v.restaurantId === restaurantId)
+    )
+    .sort((a, b) => new Date(`${b.visitDate} ${b.visitTime || ''}`).getTime() - new Date(`${a.visitDate} ${a.visitTime || ''}`).getTime());
+
+  const redemptions = (db.redemptions || [])
+    .filter(
+      (r) =>
+        (r.customerId === effectiveCustId || (matchedCustomer && r.customerId === matchedCustomer.customerId)) &&
+        (!r.restaurantId || r.restaurantId === restaurantId)
+    )
+    .map((r) => ({
+      ...r,
+      status: (r as any).status || 'REDEEMED',
+    }))
+    .sort((a, b) => new Date(b.redeemedAt).getTime() - new Date(a.redeemedAt).getTime());
+
+  return {
+    success: true,
+    visits,
+    redemptions,
+    customer: matchedCustomer || null,
+  };
 }

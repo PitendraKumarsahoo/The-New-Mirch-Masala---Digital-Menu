@@ -2,7 +2,7 @@ import { MenuItem, RestaurantInfo } from '../types';
 import { RESTAURANT_INFO, MENU_ITEMS } from '../data/menuData';
 import { API_BASE_URL, DEFAULT_API_BASE_URL } from '../config/api';
 
-const CACHE_KEY = 'nm_menu_cache_v4';
+const CACHE_KEY = 'nm_menu_cache_v7';
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes session cache
 
 export interface FetchMenuResult {
@@ -256,6 +256,27 @@ export function normalizeRestaurantInfo(raw?: Record<string, unknown>): Restaura
 }
 
 /**
+ * Utility to fetch with timeout to prevent hanging on poor mobile network connections
+ */
+export async function fetchWithTimeout(
+  url: string,
+  options: RequestInit = {},
+  timeoutMs = 12000
+): Promise<Response> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal,
+    });
+    return response;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+/**
  * Fetch menu items directly from Google Apps Script API
  * GET: ${API_BASE_URL}?action=menu
  */
@@ -265,10 +286,10 @@ export async function getMenu(apiUrl = API_BASE_URL): Promise<MenuItem[]> {
 
   let response: Response;
   try {
-    response = await fetch(url, {
+    response = await fetchWithTimeout(url, {
       method: 'GET',
       redirect: 'follow',
-    });
+    }, 12000);
   } catch (err) {
     if (apiUrl !== DEFAULT_API_BASE_URL) {
       return getMenu(DEFAULT_API_BASE_URL);
@@ -318,31 +339,14 @@ export async function getMenu(apiUrl = API_BASE_URL): Promise<MenuItem[]> {
     normalizeMenuItem(row as Record<string, unknown>, idx)
   );
 
-  // Detect whether the payload only contains the temporary Phase 3 test records
-  const isTemporaryTestPayload =
-    normalizedApiItems.length > 0 &&
-    normalizedApiItems.every(
-      (item) => item.id === 'soup-01' || item.id === 'soup-02' || item.id === 'biryani-01'
-    );
-
-  // If the API returned a real catalog from Google Sheets, dynamically return all items directly without size restrictions
-  if (!isTemporaryTestPayload && normalizedApiItems.length > 0) {
-    return normalizedApiItems;
-  }
-
-  // Automatic Self-Healing Merger (Fallback only for temporary un-migrated test state):
-  // If the Google Sheets currently contains only temporary test items or is empty
-  // prior to Apps Script redeployment, merge live items with the authoritative catalog.
-  // This guarantees all original dishes, images, prices, and categories are displayed,
-  // while still honoring live Google Sheets values (e.g. price updates or isAvailable: false).
   const itemMap = new Map<string, MenuItem>();
 
-  // 1. Seed with authoritative original catalog
+  // 1. Always seed with the authoritative full catalog so ALL items (Biryani, Tandoori, Curries, Chinese, Starters, etc.) are displayed
   for (const item of MENU_ITEMS) {
     itemMap.set(item.id.toLowerCase(), { ...item });
   }
 
-  // 2. Apply live Google Sheets rows (preserving live price, secondaryPrice, availability, popularity, image)
+  // 2. Apply live Google Sheets rows (preserving live prices, secondary price, availability, popularity, image, descriptions)
   for (const liveItem of normalizedApiItems) {
     // Skip temporary dummy test soup records that do not belong to the authentic catalog
     if (liveItem.id === 'soup-01' || liveItem.id === 'soup-02') {
@@ -352,21 +356,22 @@ export async function getMenu(apiUrl = API_BASE_URL): Promise<MenuItem[]> {
     const matchedKey = Array.from(itemMap.keys()).find(
       (k) =>
         k === liveItem.id.toLowerCase() ||
-        itemMap.get(k)?.name.toLowerCase() === liveItem.name.toLowerCase()
+        itemMap.get(k)?.name.toLowerCase().trim() === liveItem.name.toLowerCase().trim()
     );
 
     if (matchedKey) {
       const existing = itemMap.get(matchedKey)!;
       itemMap.set(matchedKey, {
         ...existing,
-        price: liveItem.price ?? existing.price,
-        secondaryPrice: liveItem.secondaryPrice ?? existing.secondaryPrice,
-        isAvailable: liveItem.isAvailable,
-        isPopular: liveItem.isPopular,
+        price: (typeof liveItem.price === 'number' && !isNaN(liveItem.price) && liveItem.price > 0) ? liveItem.price : existing.price,
+        secondaryPrice: liveItem.secondaryPrice !== undefined ? liveItem.secondaryPrice : existing.secondaryPrice,
+        isAvailable: liveItem.isAvailable !== undefined ? liveItem.isAvailable : existing.isAvailable,
+        isPopular: liveItem.isPopular !== undefined ? liveItem.isPopular : existing.isPopular,
         image: liveItem.image || existing.image,
         description: liveItem.description || existing.description,
       });
     } else {
+      // Dishes added to Google Sheets that aren't in the default catalog
       itemMap.set(liveItem.id.toLowerCase(), liveItem);
     }
   }
@@ -410,25 +415,56 @@ export async function getRestaurant(apiUrl = API_BASE_URL): Promise<RestaurantIn
 }
 
 /**
+ * Clears the session menu cache so next fetch gets live data from Google Sheets
+ */
+export function clearMenuCache(): void {
+  if (typeof window !== 'undefined' && window.sessionStorage) {
+    try {
+      sessionStorage.removeItem(CACHE_KEY);
+      sessionStorage.removeItem('nm_menu_cache_v4');
+      sessionStorage.removeItem('nm_menu_cache_v5');
+      sessionStorage.removeItem('nm_menu_cache_v6');
+    } catch {
+      // Storage quota or privacy mode error; non-fatal
+    }
+  }
+}
+
+/**
+ * Helper to safely save menu and restaurant to session cache
+ */
+function saveMenuToSessionCache(menu: MenuItem[], restaurant: RestaurantInfo): void {
+  if (typeof window !== 'undefined' && window.sessionStorage && menu.length > 0) {
+    try {
+      sessionStorage.setItem(
+        CACHE_KEY,
+        JSON.stringify({
+          timestamp: Date.now(),
+          menu,
+          restaurant,
+        })
+      );
+    } catch {
+      // Storage quota or privacy mode error; non-fatal
+    }
+  }
+}
+
+/**
  * Loads menu and restaurant data from Google Sheets via Google Apps Script Web App
- * Features:
- * - Session-level caching to prevent repeated Google Sheets requests
- * - Zero network round-trip on category changes/search
- * - Robust error handling returning standardized result
  */
 export async function fetchRestaurantAndMenu(forceRefresh = false): Promise<FetchMenuResult> {
-  // 1. Check session storage cache if not forcing refresh (must contain at least full 64 items)
-  if (!forceRefresh && typeof window !== 'undefined' && window.sessionStorage) {
+  // 1. If forceRefresh is requested, invalidate the session cache first
+  if (forceRefresh) {
+    clearMenuCache();
+  } else if (typeof window !== 'undefined' && window.sessionStorage) {
+    // Check session storage cache if not forcing refresh
     try {
       const cachedStr = sessionStorage.getItem(CACHE_KEY);
       if (cachedStr) {
         const parsed = JSON.parse(cachedStr);
         if (parsed.timestamp && Date.now() - parsed.timestamp < CACHE_TTL_MS) {
-          if (
-            Array.isArray(parsed.menu) &&
-            parsed.menu.length > 0 &&
-            !parsed.menu.every((i: { id?: string }) => i.id === 'soup-01' || i.id === 'soup-02')
-          ) {
+          if (Array.isArray(parsed.menu) && parsed.menu.length > 10) {
             return {
               success: true,
               menu: parsed.menu,
@@ -445,7 +481,6 @@ export async function fetchRestaurantAndMenu(forceRefresh = false): Promise<Fetc
     }
   }
 
-  // 2. Fetch live data from Google Apps Script API
   try {
     const [menuData, restaurantData] = await Promise.all([
       getMenu(),
@@ -453,22 +488,7 @@ export async function fetchRestaurantAndMenu(forceRefresh = false): Promise<Fetc
     ]);
 
     const syncDate = new Date();
-
-    // Save to session cache
-    if (typeof window !== 'undefined' && window.sessionStorage && menuData.length > 0) {
-      try {
-        sessionStorage.setItem(
-          CACHE_KEY,
-          JSON.stringify({
-            timestamp: Date.now(),
-            menu: menuData,
-            restaurant: restaurantData,
-          })
-        );
-      } catch {
-        // Storage quota or privacy mode error; non-fatal
-      }
-    }
+    saveMenuToSessionCache(menuData, restaurantData);
 
     return {
       success: true,
@@ -482,9 +502,9 @@ export async function fetchRestaurantAndMenu(forceRefresh = false): Promise<Fetc
     const failure = handleApiFetchFailure('fetchRestaurantAndMenu', err);
     return {
       success: false,
-      menu: [],
+      menu: MENU_ITEMS, // Authoritative fallback so all 80+ items always show
       restaurant: RESTAURANT_INFO,
-      source: 'sheets',
+      source: 'fallback',
       error: failure.sanitizedError,
       lastSynced: new Date(),
     };

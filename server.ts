@@ -486,7 +486,35 @@ interface StoredRedemption {
   status: 'REDEEMED';
 }
 
-const serverRedemptions: StoredRedemption[] = [];
+const serverRedemptions: StoredRedemption[] = [
+  {
+    redemptionId: 'RED-8K21-A',
+    customerId: 'CUS-PRIYA77',
+    restaurantId: 'mirch-masala-01',
+    rewardName: '₹50 OFF on Order Above ₹300',
+    redeemedAt: '2026-09-18 01:25 PM',
+    verifiedBy: 'Vikram Singh (Manager)',
+    status: 'REDEEMED',
+  },
+  {
+    redemptionId: 'RED-9N44-B',
+    customerId: 'CUS-ROHAN99',
+    restaurantId: 'mirch-masala-01',
+    rewardName: '20% OFF on Dining Bill',
+    redeemedAt: '2026-09-17 09:30 PM',
+    verifiedBy: 'Pooja Verma (Staff)',
+    status: 'REDEEMED',
+  },
+  {
+    redemptionId: 'RED-5M19-C',
+    customerId: 'CUS-AMIT88',
+    restaurantId: 'mirch-masala-01',
+    rewardName: 'Special Complimentary Dessert',
+    redeemedAt: '2026-09-18 08:50 PM',
+    verifiedBy: 'Rajesh Sharma (Owner)',
+    status: 'REDEEMED',
+  },
+];
 
 let serverRestaurantSettings = {
   restaurantId: 'mirch-masala-01',
@@ -1040,6 +1068,70 @@ async function startServer() {
       });
     }
   );
+
+  // GET /api/customer/activity
+  // Fetches past visit dates, verification stamps, and redemption history for customer
+  app.get('/api/customer/activity', (req: Request, res: Response) => {
+    const customerId = String(req.query.customerId || '').trim();
+    const rawPhone = String(req.query.phone || '').replace(/\D/g, '').slice(-10);
+    const restaurantId = String(req.query.restaurantId || 'mirch-masala-01').trim();
+
+    if (!customerId && !rawPhone) {
+      return res.status(400).json({
+        success: false,
+        error: 'Customer ID or phone number is required.',
+        visits: [],
+        redemptions: [],
+      });
+    }
+
+    let targetCustomer: StoredCustomer | null = null;
+    if (rawPhone) {
+      targetCustomer = serverCustomers.get(rawPhone) || null;
+    }
+    if (!targetCustomer && customerId) {
+      targetCustomer = Array.from(serverCustomers.values()).find(
+        (c) => c.customerId === customerId
+      ) || null;
+    }
+
+    const effectiveId = targetCustomer ? targetCustomer.customerId : customerId;
+
+    const visits = serverVisits
+      .filter(
+        (v) =>
+          (v.customerId === effectiveId || (targetCustomer && v.customerId === targetCustomer.customerId)) &&
+          (!v.restaurantId || v.restaurantId === restaurantId)
+      )
+      .sort((a, b) => new Date(`${b.visitDate} ${b.visitTime || ''}`).getTime() - new Date(`${a.visitDate} ${a.visitTime || ''}`).getTime());
+
+    const redemptions = serverRedemptions
+      .filter(
+        (r) =>
+          (r.customerId === effectiveId || (targetCustomer && r.customerId === targetCustomer.customerId)) &&
+          (!r.restaurantId || r.restaurantId === restaurantId)
+      )
+      .sort((a, b) => new Date(b.redeemedAt).getTime() - new Date(a.redeemedAt).getTime());
+
+    return res.json({
+      success: true,
+      customer: targetCustomer
+        ? {
+            customerId: targetCustomer.customerId,
+            name: targetCustomer.name,
+            phone: targetCustomer.phone,
+            totalVisits: targetCustomer.totalVisits,
+            availableRewards: targetCustomer.availableRewards,
+            currentVisits: targetCustomer.currentVisits,
+          }
+        : null,
+      visits,
+      redemptions,
+      totalVisits: visits.length,
+      totalRedemptions: redemptions.length,
+      timestamp: new Date().toISOString(),
+    });
+  });
 
   // --------------------------------------------------------------------
   // ADMIN DASHBOARD & OWNER DATA ENDPOINTS (Protected with RBAC)

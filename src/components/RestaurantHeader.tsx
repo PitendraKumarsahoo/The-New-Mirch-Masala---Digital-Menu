@@ -2,7 +2,7 @@ import { MapPin, Clock, Star, ShieldCheck } from 'lucide-react';
 import { RESTAURANT_INFO } from '../data/menuData';
 import { RestaurantInfo } from '../types';
 
-export type SyncConnectionStatus = 'fresh' | 'cached' | 'fallback';
+export type SyncConnectionStatus = 'fresh' | 'cached' | 'fallback' | 'offline';
 
 interface RestaurantHeaderProps {
   onOpenInfoModal?: () => void;

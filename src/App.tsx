@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef, useEffect, useCallback, type UIEvent, type TouchEvent } from 'react';
 import { MenuItem, MenuCategory, DietaryFilter, BottomNavTab, RestaurantInfo } from './types';
-import { RESTAURANT_INFO } from './data/menuData';
+import { RESTAURANT_INFO, MENU_ITEMS } from './data/menuData';
 import { fetchRestaurantAndMenu } from './services/menuService';
 import { RestaurantHeader, type SyncConnectionStatus } from './components/RestaurantHeader';
 import { SearchBar } from './components/SearchBar';
@@ -15,14 +15,15 @@ import { MenuLoadingSkeleton } from './components/MenuLoadingSkeleton';
 import { MenuErrorState } from './components/MenuErrorState';
 import { LoyaltyPage } from './components/loyalty/LoyaltyPage';
 import { ReviewPage } from './components/reviews/ReviewPage';
+import { CustomerProfilePage } from './components/profile/CustomerProfilePage';
 import { AdminDashboard } from './admin/AdminDashboard';
 import { Clock, Search, CheckCircle2, ChevronUp, Database, RefreshCw, ChevronLeft, Gift, Star, ShieldCheck } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 export default function App() {
-  const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
+  const [menuItems, setMenuItems] = useState<MenuItem[]>(MENU_ITEMS);
   const [restaurantInfo, setRestaurantInfo] = useState<RestaurantInfo>(RESTAURANT_INFO);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
   const [isRetrying, setIsRetrying] = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [dataSource, setDataSource] = useState<'sheets' | 'fallback'>('sheets');
@@ -71,23 +72,23 @@ export default function App() {
 
     const result = await fetchRestaurantAndMenu(forceRefresh);
 
-    if (result.success) {
+    if (result.success && result.menu && result.menu.length > 0) {
       setMenuItems(result.menu);
       setRestaurantInfo(result.restaurant);
       setDataSource(result.source);
       setConnectionStatus(result.cached ? 'cached' : 'fresh');
       setFetchError(null);
     } else {
-      // If no items are available in state, show error state
-      if (menuItems.length === 0) {
-        setMenuItems([]);
-        setFetchError(result.error || 'Unable to load the menu.');
-      }
-      setConnectionStatus('offline');
+      // Ensure all dishes from full catalog are always kept and displayed
+      setMenuItems((prev) => (prev && prev.length > 0 ? prev : MENU_ITEMS));
+      setRestaurantInfo(result.restaurant || RESTAURANT_INFO);
+      setDataSource('fallback');
+      setConnectionStatus('fallback');
+      setFetchError(null);
     }
     setIsLoading(false);
     setIsRetrying(false);
-  }, [menuItems.length]);
+  }, []);
 
   // Pull-to-refresh gesture handlers
   const handleTouchStart = (e: TouchEvent<HTMLDivElement>) => {
@@ -274,6 +275,9 @@ export default function App() {
     } else if (tab === 'review') {
       setActiveNavTab('review');
       window.scrollTo({ top: 0, behavior: 'smooth' });
+    } else if (tab === 'profile') {
+      setActiveNavTab('profile');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     } else {
       setComingSoonTab(tab);
     }
@@ -346,6 +350,14 @@ export default function App() {
             <ReviewPage
               onBackToMenu={() => setActiveNavTab('menu')}
               restaurantId={restaurantInfo.restaurantId || 'mirch-masala-01'}
+            />
+          ) : activeNavTab === 'profile' ? (
+            /* Phase 2: Customer Profile (Favorites, Spice Preferences, Past Visits) */
+            <CustomerProfilePage
+              onBackToMenu={() => setActiveNavTab('menu')}
+              allMenuItems={menuItems}
+              onSelectDish={(item) => setSelectedFoodItem(item)}
+              onNavigateToTab={(tab) => handleBottomTabSelect(tab)}
             />
           ) : isLoading ? (
             /* Slow loading skeleton */

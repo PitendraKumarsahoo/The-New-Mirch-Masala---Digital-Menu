@@ -1,7 +1,8 @@
-import { Flame, ChevronRight } from 'lucide-react';
+import { Flame, ChevronRight, Heart } from 'lucide-react';
 import { MenuItem } from '../types';
 import { VegBadge } from './VegBadge';
 import { ImageWithFallback } from './ImageWithFallback';
+import { useCustomerPreferences } from '../services/customerProfileService';
 
 interface PopularSectionProps {
   popularItems: MenuItem[];
@@ -9,6 +10,8 @@ interface PopularSectionProps {
 }
 
 export function PopularSection({ popularItems, onSelectItem }: PopularSectionProps) {
+  const { isFavorite, toggleFavorite } = useCustomerPreferences();
+
   if (popularItems.length === 0) return null;
 
   return (
@@ -41,12 +44,20 @@ export function PopularSection({ popularItems, onSelectItem }: PopularSectionPro
             : `₹${item.price}`;
 
           return (
-            <button
+            <article
               key={item.id}
-              type="button"
               id={`popular-item-${item.id}`}
+              role="button"
+              tabIndex={0}
               onClick={() => onSelectItem(item)}
-              className="group snap-start shrink-0 min-w-[142px] max-w-[155px] bg-white p-3 rounded-2xl shadow-frosted-card border border-slate-100/90 hover:shadow-frosted-card-hover hover:border-orange-200/70 transition-all duration-250 text-left flex flex-col justify-between active:scale-[0.98] focus:outline-hidden"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  onSelectItem(item);
+                }
+              }}
+              aria-label={`View details for ${item.name}, ${priceDisplay}`}
+              className="group snap-start shrink-0 min-w-[142px] max-w-[155px] bg-white p-3 rounded-2xl shadow-frosted-card border border-slate-100/90 hover:shadow-frosted-card-hover hover:border-orange-200/70 transition-all duration-250 text-left flex flex-col justify-between active:scale-[0.98] focus:outline-hidden cursor-pointer select-none"
             >
               <div>
                 {/* Image Container */}
@@ -62,6 +73,24 @@ export function PopularSection({ popularItems, onSelectItem }: PopularSectionPro
                   <div className="absolute top-1.5 left-1.5 bg-white/95 backdrop-blur-xs p-1 rounded-md shadow-2xs">
                     <VegBadge isVeg={item.isVeg} size="sm" />
                   </div>
+
+                  {/* Favorite Heart Button */}
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleFavorite(item.id);
+                    }}
+                    aria-label={isFavorite(item.id) ? `Remove ${item.name} from favorites` : `Add ${item.name} to favorites`}
+                    className={`absolute top-1.5 right-1.5 z-10 w-6 h-6 rounded-full flex items-center justify-center transition-transform active:scale-75 ${
+                      isFavorite(item.id)
+                        ? 'bg-rose-500 text-white shadow-xs'
+                        : 'bg-black/35 text-white/90 hover:bg-black/60 backdrop-blur-[2px]'
+                    }`}
+                  >
+                    <Heart className={`w-3.5 h-3.5 ${isFavorite(item.id) ? 'fill-white stroke-white' : 'stroke-white'}`} />
+                  </button>
+
                   {!item.isAvailable && (
                     <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-[1px] flex items-center justify-center">
                       <span className="px-2 py-0.5 bg-slate-100 text-slate-700 font-bold text-[9px] tracking-wider rounded-sm uppercase">
@@ -91,7 +120,7 @@ export function PopularSection({ popularItems, onSelectItem }: PopularSectionPro
                   View <ChevronRight className="w-3 h-3" />
                 </span>
               </div>
-            </button>
+            </article>
           );
         })}
       </div>

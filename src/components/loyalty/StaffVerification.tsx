@@ -491,7 +491,7 @@ export const StaffVerification: React.FC<StaffVerificationProps> = ({
                         Verified Strikes
                       </span>
                       <span className="text-xl font-black text-amber-600">
-                        {loyalty.currentStrikes} / 10
+                        {loyalty.currentStrikes ?? loyalty.currentVisits ?? 0} / 10
                       </span>
                       <span className="text-[10px] text-stone-400 block font-medium">
                         Total: {customer.totalVisits}

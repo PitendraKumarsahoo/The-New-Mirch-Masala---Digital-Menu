@@ -1,7 +1,8 @@
 import { MenuItem } from '../types';
 import { VegBadge } from './VegBadge';
 import { ImageWithFallback } from './ImageWithFallback';
-import { Flame } from 'lucide-react';
+import { Flame, Heart } from 'lucide-react';
+import { useCustomerPreferences } from '../services/customerProfileService';
 
 interface FoodCardProps {
   key?: string | number;
@@ -10,6 +11,9 @@ interface FoodCardProps {
 }
 
 export function FoodCard({ item, onSelect }: FoodCardProps) {
+  const { isFavorite, toggleFavorite } = useCustomerPreferences();
+  const isFav = isFavorite(item.id);
+
   const hasSecondary =
     typeof item.secondaryPrice === 'number' &&
     !isNaN(item.secondaryPrice) &&
@@ -19,11 +23,25 @@ export function FoodCard({ item, onSelect }: FoodCardProps) {
     ? `₹${item.price} / ₹${item.secondaryPrice}`
     : `₹${item.price}`;
 
+  const handleFavoriteClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    toggleFavorite(item.id);
+  };
+
   return (
     <article
       id={`food-card-${item.id}`}
+      role="button"
+      tabIndex={0}
+      aria-label={`View details for ${item.name}, ${priceDisplay}`}
       onClick={() => onSelect(item)}
-      className={`group relative bg-white rounded-2xl p-3 border transition-all duration-250 cursor-pointer active:scale-[0.99] select-none shadow-frosted-card hover:shadow-frosted-card-hover hover:border-orange-200/70 ${
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onSelect(item);
+        }
+      }}
+      className={`group relative bg-white rounded-2xl p-3 border transition-all duration-250 cursor-pointer active:scale-[0.99] select-none shadow-frosted-card hover:shadow-frosted-card-hover hover:border-orange-200/70 focus:outline-hidden focus:ring-2 focus:ring-orange-500/50 ${
         item.isAvailable
           ? 'border-slate-100/90'
           : 'border-slate-100/80 opacity-75 grayscale-[0.4]'
@@ -40,6 +58,24 @@ export function FoodCard({ item, onSelect }: FoodCardProps) {
             size="sm"
             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
           />
+
+          {/* Quick Heart Overlay on Image */}
+          <button
+            type="button"
+            onClick={handleFavoriteClick}
+            aria-label={isFav ? `Remove ${item.name} from favorites` : `Add ${item.name} to favorites`}
+            className={`absolute top-1.5 right-1.5 z-10 w-6 h-6 rounded-full flex items-center justify-center transition-transform active:scale-75 ${
+              isFav
+                ? 'bg-rose-500 text-white shadow-sm'
+                : 'bg-black/35 text-white/90 hover:bg-black/60 hover:text-white backdrop-blur-[2px]'
+            }`}
+          >
+            <Heart
+              className={`w-3.5 h-3.5 transition-colors ${
+                isFav ? 'fill-white stroke-white' : 'stroke-white'
+              }`}
+            />
+          </button>
 
           {!item.isAvailable && (
             <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-[1px] flex items-center justify-center p-1 text-center">

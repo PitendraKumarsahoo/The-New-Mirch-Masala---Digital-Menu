@@ -46,7 +46,9 @@ import {
   AdminReviewRecord,
   AdminRestaurantSettings,
 } from '../types/admin';
+import { clearMenuCache } from '../services/menuService';
 import { X, Star, Settings, Award, UserCheck, Activity } from 'lucide-react';
+
 
 const TAB_FROM_PATH: Record<string, AdminTab> = {
   '/admin': 'dashboard',
@@ -209,6 +211,7 @@ const AdminDashboardInner: React.FC = () => {
 
   // Menu Handlers
   const handleSaveMenuItem = async (itemData: Omit<AdminMenuItem, 'id'> & { id?: string }) => {
+    clearMenuCache();
     if (itemData.id) {
       // Update
       const res = await updateMenuItem(itemData as AdminMenuItem);
@@ -227,18 +230,21 @@ const AdminDashboardInner: React.FC = () => {
   };
 
   const handleDeleteMenuItem = async (id: string) => {
+    clearMenuCache();
     await deleteMenuItem(id);
     setMenu((prev) => prev.filter((m) => m.id !== id));
     showToast('Menu item removed from catalog.');
   };
 
   const handleToggleAvailability = async (id: string, isAvailable: boolean) => {
+    clearMenuCache();
     await toggleMenuAvailability(id, isAvailable);
     setMenu((prev) => prev.map((m) => (m.id === id ? { ...m, isAvailable } : m)));
     showToast(isAvailable ? 'Item marked as Available.' : 'Item marked as Out of Stock.');
   };
 
   const handleTogglePopular = async (id: string, isPopular: boolean) => {
+    clearMenuCache();
     await toggleMenuPopular(id, isPopular);
     setMenu((prev) => prev.map((m) => (m.id === id ? { ...m, isPopular } : m)));
     showToast(isPopular ? 'Featured as Popular Chef Special.' : 'Removed from Popular Specials.');
@@ -248,6 +254,7 @@ const AdminDashboardInner: React.FC = () => {
   const handleSaveReward = async (
     rewardData: Omit<AdminRewardItem, 'rewardId' | 'restaurantId'> & { rewardId?: string }
   ) => {
+    clearMenuCache();
     if (rewardData.rewardId) {
       await updateAdminReward(rewardData as AdminRewardItem);
       setRewards((prev) =>
@@ -264,6 +271,7 @@ const AdminDashboardInner: React.FC = () => {
   };
 
   const handleToggleRewardActive = async (rewardId: string, isActive: boolean) => {
+    clearMenuCache();
     await toggleAdminReward(rewardId, isActive);
     setRewards((prev) => prev.map((r) => (r.rewardId === rewardId ? { ...r, isActive } : r)));
     showToast(isActive ? 'Reward tier activated.' : 'Reward tier deactivated.');
@@ -271,6 +279,7 @@ const AdminDashboardInner: React.FC = () => {
 
   // Settings Handlers
   const handleSaveSettings = async (newSettings: AdminRestaurantSettings) => {
+    clearMenuCache();
     await updateAdminRestaurantSettings(newSettings);
     setSettings(newSettings);
     showToast('Restaurant information updated.');

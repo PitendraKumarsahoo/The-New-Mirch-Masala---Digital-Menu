@@ -137,6 +137,7 @@ export interface LoyaltyStatus {
   customer: Customer;
   totalVisits: number;
   currentVisits: number;
+  currentStrikes?: number;
   progressVisits?: number;
   visitsRequired: number;
   remainingVisits: number;
