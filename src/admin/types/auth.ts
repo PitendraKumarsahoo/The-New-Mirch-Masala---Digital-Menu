@@ -141,6 +141,8 @@ export function canAccessTab(user: AdminUser | null, tab: string): boolean {
   switch (tab) {
     case 'dashboard':
       return hasPermission(user, 'dashboard.view');
+    case 'orders':
+      return true; // All staff members can access the kitchen display & live orders
     case 'menu':
       return hasPermission(user, 'menu.view');
     case 'customers':

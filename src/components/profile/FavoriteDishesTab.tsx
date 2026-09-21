@@ -3,6 +3,7 @@ import { MenuItem } from '../../types';
 import { VegBadge } from '../VegBadge';
 import { ImageWithFallback } from '../ImageWithFallback';
 import { useCustomerPreferences } from '../../services/customerProfileService';
+import { useTableOrder } from '../../services/tableOrderService';
 import { SPICE_LEVEL_CONFIG } from '../../types/profile';
 import {
   Heart,
@@ -12,13 +13,10 @@ import {
   Flame,
   Plus,
   Minus,
-  Receipt,
-  Copy,
   Check,
   Sparkles,
-  X,
-  RotateCcw,
   ShoppingBag,
+  CheckCircle2,
 } from 'lucide-react';
 
 interface FavoriteDishesTabProps {
@@ -37,19 +35,10 @@ export const FavoriteDishesTab: React.FC<FavoriteDishesTabProps> = ({
   onBrowseMenu,
 }) => {
   const [filter, setFilter] = useState<'all' | 'veg' | 'non-veg'>('all');
-  const [isSlipOpen, setIsSlipOpen] = useState(false);
-  const [selectedTable, setSelectedTable] = useState('Table 4');
-  const [copiedSlip, setCopiedSlip] = useState(false);
+  const [addedAllSuccess, setAddedAllSuccess] = useState(false);
 
-  const {
-    preferences,
-    getQuantity,
-    incrementQuantity,
-    decrementQuantity,
-    setQuantity,
-    removeFavorite,
-    resetQuantities,
-  } = useCustomerPreferences();
+  const { removeFavorite, preferences } = useCustomerPreferences();
+  const { getQuantity, increment, decrement, totalItemsCount } = useTableOrder();
 
   // Map favorite IDs to MenuItem objects
   const favoriteItems = useMemo(() => {
@@ -68,80 +57,38 @@ export const FavoriteDishesTab: React.FC<FavoriteDishesTabProps> = ({
     return favoriteItems;
   }, [favoriteItems, filter]);
 
-  // Calculations for total quantities and prices
-  const { totalPortions, subtotalPrice, taxGst, grandTotalPrice } = useMemo(() => {
-    let portions = 0;
-    let subtotal = 0;
-
-    for (const item of favoriteItems) {
-      const qty = getQuantity(item.id) || 1;
-      portions += qty;
-      const unitPrice = Number(item.price) || 0;
-      subtotal += unitPrice * qty;
-    }
-
-    const gst = Math.round(subtotal * 0.05); // 5% standard GST for restaurant dining in India
-    const grandTotal = subtotal + gst;
-
-    return {
-      totalPortions: portions,
-      subtotalPrice: subtotal,
-      taxGst: gst,
-      grandTotalPrice: grandTotal,
-    };
-  }, [favoriteItems, getQuantity]);
-
-  // Copy Waiter Order Slip to Clipboard
-  const handleCopySlip = () => {
-    const spiceInfo = SPICE_LEVEL_CONFIG[preferences.spiceLevel || 'medium'];
-    const lines = [
-      `🍛 The New Mirch Masala - Dine-In Order Slip`,
-      `📍 ${selectedTable} | ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
-      `🌶️ Spice Preference: ${spiceInfo.label} (${spiceInfo.peppers})`,
-      ...(preferences.specialInstructions
-        ? [`📝 Instructions: ${preferences.specialInstructions}`]
-        : []),
-      `----------------------------------------`,
-      ...favoriteItems.map((item) => {
-        const qty = getQuantity(item.id) || 1;
-        const itemTotal = (Number(item.price) || 0) * qty;
-        return `• ${item.name} x${qty} = ₹${itemTotal}`;
-      }),
-      `----------------------------------------`,
-      `Items: ${totalPortions} portions (${favoriteItems.length} dishes)`,
-      `Subtotal: ₹${subtotalPrice.toLocaleString('en-IN')}`,
-      `GST (5%): ₹${taxGst.toLocaleString('en-IN')}`,
-      `Total Estimate: ₹${grandTotalPrice.toLocaleString('en-IN')}`,
-    ];
-
-    const text = lines.join('\n');
-    if (typeof navigator !== 'undefined' && navigator.clipboard) {
-      navigator.clipboard.writeText(text);
-      setCopiedSlip(true);
-      setTimeout(() => setCopiedSlip(false), 2500);
-    }
+  // Add all favorites to active table order
+  const handleAddAllToOrder = () => {
+    favoriteItems.forEach((dish) => {
+      if (dish.isAvailable) {
+        if (getQuantity(dish.id) === 0) {
+          increment(dish.id);
+        }
+      }
+    });
+    setAddedAllSuccess(true);
+    setTimeout(() => setAddedAllSuccess(false), 2500);
   };
 
+  // Empty state when customer has not saved any favorites yet
   if (favoriteItems.length === 0) {
     return (
-      <div className="bg-white rounded-3xl border border-stone-200/80 p-8 text-center shadow-xs">
-        <div className="w-16 h-16 rounded-2xl bg-rose-50 text-rose-500 border border-rose-100 flex items-center justify-center mx-auto mb-4 shadow-inner">
-          <Heart className="w-8 h-8 fill-rose-100 text-rose-500" />
+      <div className="py-12 px-4 text-center space-y-4">
+        <div className="w-16 h-16 rounded-full bg-rose-50 border border-rose-200 text-rose-500 flex items-center justify-center mx-auto shadow-xs">
+          <Heart className="w-8 h-8 stroke-[1.5]" />
         </div>
-        <h3 className="text-base font-bold text-stone-900 tracking-tight">
-          No Favorite Dishes Yet
-        </h3>
-        <p className="text-xs text-stone-500 mt-1.5 max-w-xs mx-auto leading-relaxed">
-          Tap the <span className="text-rose-600 font-semibold">❤️ heart icon</span> or <span className="text-orange-600 font-semibold">+ ADD</span> on any dish across our menu to curate your personalized favorites, adjust quantities (1x, 2x, 3x), and calculate your table order total.
-        </p>
-
+        <div className="space-y-1 max-w-xs mx-auto">
+          <h3 className="text-base font-bold text-stone-900">No Saved Favorites Yet</h3>
+          <p className="text-xs text-stone-500 leading-relaxed">
+            Browse our authentic North Indian menu and tap the heart icon on any dish to save it here for fast reordering.
+          </p>
+        </div>
         <button
           type="button"
           onClick={onBrowseMenu}
-          className="mt-5 inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-orange-600 hover:bg-orange-700 text-white font-bold text-xs shadow-sm hover:shadow-md transition-all active:scale-95 cursor-pointer"
+          className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-orange-600 hover:bg-orange-700 text-white font-bold text-xs shadow-xs transition-colors cursor-pointer"
         >
-          <UtensilsCrossed className="w-4 h-4" />
-          <span>Explore Digital Menu</span>
+          <span>Explore Menu</span>
           <ArrowRight className="w-3.5 h-3.5" />
         </button>
       </div>
@@ -149,30 +96,49 @@ export const FavoriteDishesTab: React.FC<FavoriteDishesTabProps> = ({
   }
 
   return (
-    <div className="space-y-4" id="favorite-dishes-section">
-      {/* Header & Filter Bar */}
-      <div className="flex items-center justify-between flex-wrap gap-2 px-1">
-        <div>
-          <h3 className="text-sm font-bold text-stone-900 flex items-center gap-2">
-            <span>Favorite Dishes</span>
-            <span className="px-2 py-0.5 rounded-full text-[11px] font-extrabold bg-rose-100 text-rose-700">
-              {favoriteItems.length} {favoriteItems.length === 1 ? 'Dish' : 'Dishes'}
-            </span>
-            <span className="px-2 py-0.5 rounded-full text-[11px] font-extrabold bg-orange-100 text-orange-800">
-              {totalPortions} {totalPortions === 1 ? 'Portion' : 'Portions'}
-            </span>
-          </h3>
-          <p className="text-[11px] text-stone-500 mt-0.5">
-            Adjust quantities (+/-) and calculate your table dining total
-          </p>
+    <div className="space-y-4">
+      {/* Header Info Banner */}
+      <div className="p-3.5 rounded-2xl bg-gradient-to-r from-rose-50 to-orange-50 border border-rose-200/70 flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2.5">
+          <div className="w-9 h-9 rounded-xl bg-rose-500 text-white flex items-center justify-center shrink-0 shadow-xs">
+            <Heart className="w-5 h-5 fill-white" />
+          </div>
+          <div>
+            <h3 className="text-xs font-bold text-stone-900 leading-tight">
+              My Saved Favorites ({favoriteItems.length})
+            </h3>
+            <p className="text-[11px] text-stone-500">
+              Dishes you bookmarked • One-tap add to your table order
+            </p>
+          </div>
         </div>
 
-        {/* Veg / Non-Veg filter toggle */}
-        <div className="flex items-center gap-1 bg-stone-100 p-1 rounded-xl">
+        <button
+          type="button"
+          onClick={handleAddAllToOrder}
+          className="px-3 py-2 rounded-xl bg-orange-600 hover:bg-orange-700 text-white text-[11px] font-bold shrink-0 transition-colors shadow-xs flex items-center gap-1.5 cursor-pointer"
+        >
+          {addedAllSuccess ? (
+            <>
+              <Check className="w-3.5 h-3.5" />
+              <span>Added to Order!</span>
+            </>
+          ) : (
+            <>
+              <ShoppingBag className="w-3.5 h-3.5" />
+              <span>Order All Favorites</span>
+            </>
+          )}
+        </button>
+      </div>
+
+      {/* Filter Tabs (All / Pure Veg / Non-Veg) */}
+      <div className="flex items-center justify-between gap-2">
+        <div className="inline-flex p-1 bg-stone-100 rounded-xl text-xs font-semibold">
           <button
             type="button"
             onClick={() => setFilter('all')}
-            className={`px-2.5 py-1 text-[10px] font-bold rounded-lg transition-colors cursor-pointer ${
+            className={`px-3 py-1 rounded-lg transition-all cursor-pointer ${
               filter === 'all'
                 ? 'bg-white text-stone-900 shadow-xs'
                 : 'text-stone-500 hover:text-stone-900'
@@ -183,19 +149,19 @@ export const FavoriteDishesTab: React.FC<FavoriteDishesTabProps> = ({
           <button
             type="button"
             onClick={() => setFilter('veg')}
-            className={`px-2.5 py-1 text-[10px] font-bold rounded-lg transition-colors flex items-center gap-1 cursor-pointer ${
+            className={`px-3 py-1 rounded-lg transition-all cursor-pointer flex items-center gap-1 ${
               filter === 'veg'
                 ? 'bg-white text-emerald-700 shadow-xs'
                 : 'text-stone-500 hover:text-emerald-700'
             }`}
           >
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-            Veg
+            Pure Veg
           </button>
           <button
             type="button"
             onClick={() => setFilter('non-veg')}
-            className={`px-2.5 py-1 text-[10px] font-bold rounded-lg transition-colors flex items-center gap-1 cursor-pointer ${
+            className={`px-3 py-1 rounded-lg transition-all cursor-pointer flex items-center gap-1 ${
               filter === 'non-veg'
                 ? 'bg-white text-rose-700 shadow-xs'
                 : 'text-stone-500 hover:text-rose-700'
@@ -205,14 +171,19 @@ export const FavoriteDishesTab: React.FC<FavoriteDishesTabProps> = ({
             Non-Veg
           </button>
         </div>
+
+        {totalItemsCount > 0 && (
+          <span className="text-[11px] text-stone-500 font-medium">
+            Active Order: <strong className="text-orange-600">{totalItemsCount} dishes</strong>
+          </span>
+        )}
       </div>
 
-      {/* List of Favorite Dishes with Interactive Quantity Stepper & Price Breakdown */}
-      <div className="space-y-3">
+      {/* List of Favorite Dishes */}
+      <div className="space-y-2.5">
         {filteredItems.map((item) => {
-          const qty = getQuantity(item.id) || 1;
+          const orderQty = getQuantity(item.id);
           const unitPrice = Number(item.price) || 0;
-          const itemTotal = unitPrice * qty;
 
           const hasSecondary =
             typeof item.secondaryPrice === 'number' &&
@@ -226,9 +197,9 @@ export const FavoriteDishesTab: React.FC<FavoriteDishesTabProps> = ({
             <div
               key={item.id}
               id={`favorite-dish-${item.id}`}
-              className="group bg-white rounded-2xl p-3.5 border border-stone-200/80 shadow-2xs hover:border-orange-200 transition-all space-y-3"
+              className="group bg-white rounded-2xl p-3 border border-stone-200/80 shadow-2xs hover:border-orange-200 transition-all space-y-2.5"
             >
-              {/* Upper row: Thumbnail + Dish Details + Remove Heart Button */}
+              {/* Upper row: Thumbnail + Dish Details + Remove from favorites */}
               <div className="flex items-start gap-3">
                 {/* Thumbnail */}
                 <div
@@ -298,347 +269,86 @@ export const FavoriteDishesTab: React.FC<FavoriteDishesTabProps> = ({
                   )}
                 </div>
 
-                {/* Remove Favorite Button */}
+                {/* Remove from favorites (Heart) */}
                 <button
                   type="button"
                   onClick={() => removeFavorite(item.id)}
-                  className="p-2 rounded-xl text-stone-400 hover:text-rose-600 hover:bg-rose-50 transition-colors shrink-0 cursor-pointer"
+                  className="p-1.5 rounded-xl text-rose-500 hover:text-rose-700 hover:bg-rose-50 transition-colors shrink-0 cursor-pointer"
                   title="Remove from favorites"
                   aria-label={`Remove ${item.name} from favorites`}
                 >
-                  <Trash2 className="w-4 h-4" />
+                  <Heart className="w-4 h-4 fill-rose-500" />
                 </button>
               </div>
 
-              {/* Lower row: Quantity Stepper (1, 2, 3, 4...) & Calculated Item Subtotal */}
-              <div className="pt-2 border-t border-stone-100 flex items-center justify-between gap-2 flex-wrap">
-                {/* Quantity Controls Stepper */}
-                <div className="flex items-center gap-2">
-                  <span className="text-[11px] font-bold text-stone-500 uppercase tracking-wider">
-                    Quantity:
-                  </span>
-                  <div className="inline-flex items-center bg-stone-100/90 rounded-xl p-0.5 border border-stone-200/80 shadow-2xs">
-                    {/* Decrement Button */}
-                    <button
-                      type="button"
-                      onClick={() => decrementQuantity(item.id)}
-                      className="w-7 h-7 rounded-lg bg-white hover:bg-stone-50 text-stone-700 flex items-center justify-center transition-all active:scale-90 shadow-2xs cursor-pointer disabled:opacity-30"
-                      title={qty === 1 ? 'Remove from favorites' : 'Decrease portion'}
-                      aria-label={`Decrease quantity of ${item.name}`}
-                    >
-                      {qty === 1 ? (
-                        <Trash2 className="w-3.5 h-3.5 text-rose-500" />
-                      ) : (
-                        <Minus className="w-3.5 h-3.5" />
-                      )}
-                    </button>
-
-                    {/* Quantity Display */}
-                    <span
-                      className="w-8 text-center text-xs font-black text-stone-900"
-                      title={`${qty} portions`}
-                    >
-                      {qty}
+              {/* Lower row: Add to Table Order / Stepper */}
+              <div className="pt-2 border-t border-stone-100 flex items-center justify-between gap-2">
+                <span className="text-[11px] text-stone-500">
+                  {orderQty > 0 ? (
+                    <span className="text-emerald-700 font-bold flex items-center gap-1">
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      In table order ({orderQty} portions = ₹{unitPrice * orderQty})
                     </span>
+                  ) : (
+                    'Not in active order'
+                  )}
+                </span>
 
-                    {/* Increment Button */}
+                {/* Action: ADD or Stepper for Table Order */}
+                {item.isAvailable ? (
+                  orderQty > 0 ? (
+                    <div className="inline-flex items-center bg-stone-100 rounded-xl p-0.5 border border-stone-200">
+                      <button
+                        type="button"
+                        onClick={() => decrement(item.id)}
+                        className="w-7 h-7 rounded-lg bg-white hover:bg-stone-50 text-stone-700 flex items-center justify-center transition-all active:scale-90 shadow-2xs cursor-pointer"
+                        aria-label={`Decrease ${item.name}`}
+                      >
+                        {orderQty === 1 ? (
+                          <Trash2 className="w-3 h-3 text-rose-500" />
+                        ) : (
+                          <Minus className="w-3 h-3" />
+                        )}
+                      </button>
+                      <span className="w-7 text-center text-xs font-black text-stone-900">
+                        {orderQty}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => increment(item.id)}
+                        className="w-7 h-7 rounded-lg bg-orange-600 hover:bg-orange-700 text-white flex items-center justify-center transition-all active:scale-90 shadow-2xs cursor-pointer"
+                        aria-label={`Increase ${item.name}`}
+                      >
+                        <Plus className="w-3 h-3 stroke-[2.5]" />
+                      </button>
+                    </div>
+                  ) : (
                     <button
                       type="button"
-                      onClick={() => incrementQuantity(item.id)}
-                      className="w-7 h-7 rounded-lg bg-orange-600 hover:bg-orange-700 text-white flex items-center justify-center transition-all active:scale-90 shadow-2xs cursor-pointer"
-                      title="Add one more portion"
-                      aria-label={`Increase quantity of ${item.name}`}
+                      onClick={() => increment(item.id)}
+                      className="px-3 py-1.5 rounded-xl bg-orange-50 hover:bg-orange-100 text-orange-700 font-bold text-xs border border-orange-200 transition-all flex items-center gap-1 cursor-pointer active:scale-95"
                     >
-                      <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
+                      <Plus className="w-3 h-3 stroke-[3]" />
+                      <span>Add to Table Order</span>
                     </button>
-                  </div>
-                </div>
-
-                {/* Calculated Item Total */}
-                <div className="text-right">
-                  <span className="text-[10px] text-stone-400 block leading-tight">
-                    {qty} × ₹{unitPrice}
-                  </span>
-                  <span className="text-xs sm:text-sm font-black text-emerald-700">
-                    ₹{itemTotal.toLocaleString('en-IN')}
-                  </span>
-                </div>
+                  )
+                ) : (
+                  <span className="text-xs text-stone-400 font-medium">Currently Sold Out</span>
+                )}
               </div>
             </div>
           );
         })}
       </div>
 
-      {/* Beautiful Order Total & Bill Breakdown Card */}
-      <div className="bg-gradient-to-b from-stone-900 to-stone-950 rounded-3xl p-4 sm:p-5 text-white shadow-lg border border-stone-800 space-y-4">
-        <div className="flex items-center justify-between border-b border-stone-800 pb-3">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-xl bg-orange-500/20 border border-orange-500/30 text-orange-400 flex items-center justify-center">
-              <Receipt className="w-4 h-4" />
-            </div>
-            <div>
-              <h4 className="text-xs font-bold uppercase tracking-wider text-stone-200">
-                Favorite Order Summary
-              </h4>
-              <p className="text-[10px] text-stone-400">
-                Calculated for {totalPortions} portions across {favoriteItems.length} dishes
-              </p>
-            </div>
-          </div>
-
-          <button
-            type="button"
-            onClick={() => resetQuantities(1)}
-            className="text-[10px] text-stone-400 hover:text-stone-200 flex items-center gap-1 transition-colors cursor-pointer py-1 px-2 rounded-lg hover:bg-white/5"
-            title="Reset all dish quantities to 1"
-          >
-            <RotateCcw className="w-3 h-3" />
-            <span>Reset 1x</span>
-          </button>
-        </div>
-
-        {/* Breakdown details */}
-        <div className="space-y-1.5 text-xs text-stone-300">
-          <div className="flex items-center justify-between">
-            <span className="text-stone-400">Items Subtotal</span>
-            <span className="font-semibold text-stone-200">
-              ₹{subtotalPrice.toLocaleString('en-IN')}
-            </span>
-          </div>
-
-          <div className="flex items-center justify-between">
-            <span className="text-stone-400">Restaurant GST (5%)</span>
-            <span className="font-semibold text-stone-200">
-              ₹{taxGst.toLocaleString('en-IN')}
-            </span>
-          </div>
-
-          <div className="flex items-center justify-between text-[11px] text-stone-400 pt-1 border-t border-stone-800/80">
-            <span>Customer Spice Level</span>
-            <span className="text-amber-400 font-bold">
-              {SPICE_LEVEL_CONFIG[preferences.spiceLevel || 'medium'].label} (
-              {SPICE_LEVEL_CONFIG[preferences.spiceLevel || 'medium'].peppers})
-            </span>
-          </div>
-        </div>
-
-        {/* Grand Total Row */}
-        <div className="pt-3 border-t border-stone-800 flex items-baseline justify-between">
-          <div>
-            <span className="text-xs font-bold text-stone-300 uppercase tracking-wider block">
-              Estimated Total Price
-            </span>
-            <span className="text-[10px] text-stone-400">
-              Inclusive of GST & portions
-            </span>
-          </div>
-          <div className="text-right">
-            <span className="text-xl sm:text-2xl font-black text-orange-400 tracking-tight">
-              ₹{grandTotalPrice.toLocaleString('en-IN')}
-            </span>
-          </div>
-        </div>
-
-        {/* Action Buttons */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
-          {/* Open Waiter Order Slip Modal */}
-          <button
-            type="button"
-            onClick={() => setIsSlipOpen(true)}
-            className="w-full py-3 px-4 rounded-xl bg-orange-600 hover:bg-orange-500 text-white font-bold text-xs shadow-md active:scale-98 transition-all flex items-center justify-center gap-2 cursor-pointer"
-          >
-            <ShoppingBag className="w-4 h-4" />
-            <span>Generate Waiter Order Slip</span>
-          </button>
-
-          {/* Quick Copy Slip Text */}
-          <button
-            type="button"
-            onClick={handleCopySlip}
-            className="w-full py-3 px-4 rounded-xl bg-stone-800 hover:bg-stone-700 text-stone-200 font-bold text-xs active:scale-98 transition-all flex items-center justify-center gap-2 cursor-pointer border border-stone-700"
-          >
-            {copiedSlip ? (
-              <>
-                <Check className="w-4 h-4 text-emerald-400" />
-                <span className="text-emerald-400">Order Copied!</span>
-              </>
-            ) : (
-              <>
-                <Copy className="w-4 h-4 text-stone-400" />
-                <span>Copy Order for Waiter</span>
-              </>
-            )}
-          </button>
-        </div>
-
-        {/* Browse more menu link */}
-        <div className="text-center pt-1">
-          <button
-            type="button"
-            onClick={onBrowseMenu}
-            className="text-[11px] text-stone-400 hover:text-white transition-colors cursor-pointer inline-flex items-center gap-1"
-          >
-            <span>Want to add more dishes to favorites?</span>
-            <span className="underline font-semibold text-orange-400">Explore Menu</span>
-            <ArrowRight className="w-3 h-3" />
-          </button>
-        </div>
+      {/* Spice note indicator from customer preferences */}
+      <div className="p-3 bg-stone-50 rounded-2xl border border-stone-200/80 flex items-center justify-between text-xs text-stone-600">
+        <span>Dining Spice Preference</span>
+        <span className="font-bold text-amber-800">
+          {SPICE_LEVEL_CONFIG[preferences.spiceLevel || 'medium'].label}{' '}
+          {SPICE_LEVEL_CONFIG[preferences.spiceLevel || 'medium'].peppers}
+        </span>
       </div>
-
-      {/* Waiter Order Slip Modal */}
-      {isSlipOpen && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-950/75 backdrop-blur-sm animate-in fade-in"
-          onClick={() => setIsSlipOpen(false)}
-        >
-          <div
-            className="w-full max-w-sm bg-white rounded-3xl p-5 shadow-2xl border border-stone-100 text-left space-y-4 animate-in zoom-in-95 duration-150 max-h-[90vh] overflow-y-auto no-scrollbar"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Modal Header */}
-            <div className="flex items-center justify-between border-b border-stone-100 pb-3">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-xl bg-orange-100 text-orange-600 flex items-center justify-center">
-                  <Receipt className="w-4 h-4" />
-                </div>
-                <div>
-                  <h3 className="text-sm font-bold text-stone-900">
-                    Dine-In Order Slip
-                  </h3>
-                  <p className="text-[10px] text-stone-500">
-                    Show this directly to the restaurant server
-                  </p>
-                </div>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => setIsSlipOpen(false)}
-                className="p-1 rounded-lg text-stone-400 hover:text-stone-700 hover:bg-stone-100 transition-colors cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            {/* Table Selection */}
-            <div className="bg-stone-50 rounded-2xl p-3 border border-stone-200/80 space-y-1.5">
-              <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wider block">
-                Dining Location / Table
-              </span>
-              <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-0.5">
-                {['Table 1', 'Table 2', 'Table 3', 'Table 4', 'Table 5', 'Family Table 8', 'Takeaway'].map(
-                  (tbl) => (
-                    <button
-                      key={tbl}
-                      type="button"
-                      onClick={() => setSelectedTable(tbl)}
-                      className={`px-2.5 py-1 rounded-lg text-[10px] font-bold shrink-0 transition-colors cursor-pointer ${
-                        selectedTable === tbl
-                          ? 'bg-orange-600 text-white shadow-2xs'
-                          : 'bg-white text-stone-700 border border-stone-200 hover:bg-stone-100'
-                      }`}
-                    >
-                      {tbl}
-                    </button>
-                  )
-                )}
-              </div>
-            </div>
-
-            {/* Itemized Order Slip Receipt */}
-            <div className="p-4 bg-stone-50 rounded-2xl border border-dashed border-stone-300 font-mono text-xs space-y-2">
-              <div className="text-center pb-2 border-b border-stone-200">
-                <p className="font-bold text-stone-900">THE NEW MIRCH MASALA</p>
-                <p className="text-[10px] text-stone-500">
-                  {selectedTable} • {new Date().toLocaleDateString()}
-                </p>
-              </div>
-
-              {/* Items */}
-              <div className="space-y-1.5 py-1">
-                {favoriteItems.map((item) => {
-                  const qty = getQuantity(item.id) || 1;
-                  const itemPrice = (Number(item.price) || 0) * qty;
-                  return (
-                    <div key={item.id} className="flex justify-between items-start gap-2">
-                      <span className="text-stone-800">
-                        {qty}x {item.name}
-                      </span>
-                      <span className="font-bold text-stone-900 shrink-0">
-                        ₹{itemPrice}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
-
-              {/* Spice & Instructions */}
-              <div className="pt-2 border-t border-stone-200 text-[10px] text-stone-600 space-y-0.5">
-                <p>
-                  <span className="font-bold text-stone-800">Spice Level:</span>{' '}
-                  {SPICE_LEVEL_CONFIG[preferences.spiceLevel || 'medium'].label}{' '}
-                  {SPICE_LEVEL_CONFIG[preferences.spiceLevel || 'medium'].peppers}
-                </p>
-                {preferences.specialInstructions && (
-                  <p>
-                    <span className="font-bold text-stone-800">Note:</span>{' '}
-                    {preferences.specialInstructions}
-                  </p>
-                )}
-              </div>
-
-              {/* Totals */}
-              <div className="pt-2 border-t border-stone-300 space-y-1 text-stone-800">
-                <div className="flex justify-between text-[11px]">
-                  <span>Subtotal ({totalPortions} portions)</span>
-                  <span>₹{subtotalPrice.toLocaleString('en-IN')}</span>
-                </div>
-                <div className="flex justify-between text-[11px]">
-                  <span>GST (5%)</span>
-                  <span>₹{taxGst.toLocaleString('en-IN')}</span>
-                </div>
-                <div className="flex justify-between font-bold text-sm text-stone-900 pt-1 border-t border-stone-300">
-                  <span>Grand Total</span>
-                  <span className="text-orange-600">
-                    ₹{grandTotalPrice.toLocaleString('en-IN')}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            {/* Slip Action Buttons */}
-            <div className="space-y-2 pt-1">
-              <button
-                type="button"
-                onClick={handleCopySlip}
-                className="w-full py-3 rounded-xl bg-orange-600 hover:bg-orange-700 text-white font-bold text-xs shadow-md transition-colors flex items-center justify-center gap-2 cursor-pointer"
-              >
-                {copiedSlip ? (
-                  <>
-                    <Check className="w-4 h-4 text-white" />
-                    <span>Copied to Clipboard!</span>
-                  </>
-                ) : (
-                  <>
-                    <Copy className="w-4 h-4" />
-                    <span>Copy Text Slip</span>
-                  </>
-                )}
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setIsSlipOpen(false)}
-                className="w-full py-2.5 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-700 font-bold text-xs transition-colors cursor-pointer"
-              >
-                Close Slip
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

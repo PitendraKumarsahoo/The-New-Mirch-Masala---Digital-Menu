@@ -1,6 +1,7 @@
 import React from 'react';
 import {
   LayoutDashboard,
+  ChefHat,
   UtensilsCrossed,
   Users,
   CalendarCheck,
@@ -22,13 +23,14 @@ export const AdminBottomNav: React.FC<AdminBottomNavProps> = ({
 }) => {
   const items: Array<{ id: AdminTab; label: string; icon: React.ComponentType<{ className?: string }> }> = [
     { id: 'dashboard', label: 'Home', icon: LayoutDashboard },
+    { id: 'orders', label: 'Orders', icon: ChefHat },
     { id: 'menu', label: 'Menu', icon: UtensilsCrossed },
     { id: 'customers', label: 'Customers', icon: Users },
     { id: 'visits', label: 'Visits', icon: CalendarCheck },
-    { id: 'rewards', label: 'Rewards', icon: Award },
   ];
 
   const isMoreActive =
+    currentTab === 'rewards' ||
     currentTab === 'reviews' ||
     currentTab === 'settings' ||
     currentTab === 'staff' ||

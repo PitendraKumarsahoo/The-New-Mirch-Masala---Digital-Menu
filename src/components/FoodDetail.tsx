@@ -4,6 +4,11 @@ import { MenuItem } from '../types';
 import { VegBadge } from './VegBadge';
 import { ImageWithFallback } from './ImageWithFallback';
 import { useCustomerPreferences } from '../services/customerProfileService';
+import {
+  useTableOrder,
+  hasDualPortion,
+  getPortionPrices,
+} from '../services/tableOrderService';
 import { SPICE_LEVEL_CONFIG } from '../types/profile';
 
 interface FoodDetailProps {
@@ -12,14 +17,16 @@ interface FoodDetailProps {
 }
 
 export function FoodDetail({ item, onClose }: FoodDetailProps) {
+  const { preferences, isFavorite, toggleFavorite } = useCustomerPreferences();
   const {
-    preferences,
-    isFavorite,
-    toggleFavorite,
     getQuantity,
-    incrementQuantity,
-    decrementQuantity,
-  } = useCustomerPreferences();
+    increment,
+    decrement,
+    addDish,
+    getDishPortionCounts,
+    getPortionCount,
+    removeDishPortion,
+  } = useTableOrder();
   // Lock body scroll when modal is open
   useEffect(() => {
     if (item) {
@@ -48,7 +55,13 @@ export function FoodDetail({ item, onClose }: FoodDetailProps) {
     !isNaN(item.secondaryPrice) &&
     item.secondaryPrice > 0;
 
-  const priceDisplay = hasSecondary
+  const isDual = hasDualPortion(item);
+  const portionCounts = getDishPortionCounts(item.id);
+  const portionPrices = getPortionPrices(item);
+
+  const priceDisplay = isDual
+    ? `Half ₹${portionPrices.halfPrice} • Full ₹${portionPrices.fullPrice}`
+    : hasSecondary
     ? `₹${item.price} / ₹${item.secondaryPrice}`
     : `₹${item.price}`;
 
@@ -228,82 +241,194 @@ export function FoodDetail({ item, onClose }: FoodDetailProps) {
 
           {/* Quantity Stepper & Price Calculation Row */}
           {item.isAvailable && (
-            <div className="mt-5 p-3.5 rounded-2xl bg-stone-50 border border-stone-200/80 space-y-3">
-              <div className="flex items-center justify-between">
-                <div>
-                  <span className="text-xs font-bold text-stone-800 block">
-                    Select Portions
-                  </span>
-                  <span className="text-[11px] text-stone-500">
-                    Add 1x, 2x, 3x directly to your dining order
+            isDual ? (
+              /* Dual Portion Selector (Half / Full) */
+              <div className="mt-5 p-3.5 rounded-2xl bg-stone-50 border border-stone-200/80 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <span className="text-xs font-bold text-stone-800 block">
+                      Select Portions (Half / Full)
+                    </span>
+                    <span className="text-[11px] text-stone-500">
+                      Choose portion size for your dining table
+                    </span>
+                  </div>
+                  <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">
+                    Dual Sizes
                   </span>
                 </div>
 
-                {/* Stepper */}
-                <div className="inline-flex items-center bg-white rounded-xl p-1 border border-stone-200 shadow-2xs">
-                  <button
-                    type="button"
-                    onClick={() => decrementQuantity(item.id)}
-                    disabled={getQuantity(item.id) === 0}
-                    className="w-8 h-8 rounded-lg bg-stone-100 hover:bg-stone-200 text-stone-700 flex items-center justify-center transition-all active:scale-90 disabled:opacity-30 cursor-pointer"
-                    aria-label={`Decrease ${item.name} quantity`}
-                  >
-                    <Minus className="w-3.5 h-3.5" />
-                  </button>
+                {/* Half Portion Option */}
+                <div className="flex items-center justify-between p-2.5 rounded-xl bg-white border border-stone-200/70">
+                  <div>
+                    <span className="text-xs font-bold text-stone-900 block">Half Portion</span>
+                    <span className="text-xs font-bold text-orange-600">₹{portionPrices.halfPrice}</span>
+                  </div>
+                  <div className="inline-flex items-center bg-stone-50 rounded-xl p-0.5 border border-stone-200 shadow-2xs">
+                    <button
+                      type="button"
+                      onClick={() => removeDishPortion(item.id, 'half')}
+                      disabled={getPortionCount(item.id, 'half') === 0}
+                      className="w-7 h-7 rounded-lg bg-stone-100 hover:bg-stone-200 text-stone-700 flex items-center justify-center transition-all active:scale-90 disabled:opacity-30 cursor-pointer"
+                      aria-label="Decrease half portion"
+                    >
+                      <Minus className="w-3 h-3" />
+                    </button>
+                    <span className="w-8 text-center text-xs font-black text-stone-900">
+                      {getPortionCount(item.id, 'half')}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => addDish(item, 'half')}
+                      className="w-7 h-7 rounded-lg bg-orange-600 hover:bg-orange-700 text-white flex items-center justify-center transition-all active:scale-90 shadow-2xs cursor-pointer"
+                      aria-label="Increase half portion"
+                    >
+                      <Plus className="w-3 h-3 stroke-[2.5]" />
+                    </button>
+                  </div>
+                </div>
 
-                  <span className="w-10 text-center text-sm font-black text-stone-900">
-                    {getQuantity(item.id)}
+                {/* Full Portion Option */}
+                <div className="flex items-center justify-between p-2.5 rounded-xl bg-white border border-stone-200/70">
+                  <div>
+                    <span className="text-xs font-bold text-stone-900 block">Full Portion</span>
+                    <span className="text-xs font-bold text-orange-600">₹{portionPrices.fullPrice}</span>
+                  </div>
+                  <div className="inline-flex items-center bg-stone-50 rounded-xl p-0.5 border border-stone-200 shadow-2xs">
+                    <button
+                      type="button"
+                      onClick={() => removeDishPortion(item.id, 'full')}
+                      disabled={getPortionCount(item.id, 'full') === 0}
+                      className="w-7 h-7 rounded-lg bg-stone-100 hover:bg-stone-200 text-stone-700 flex items-center justify-center transition-all active:scale-90 disabled:opacity-30 cursor-pointer"
+                      aria-label="Decrease full portion"
+                    >
+                      <Minus className="w-3 h-3" />
+                    </button>
+                    <span className="w-8 text-center text-xs font-black text-stone-900">
+                      {getPortionCount(item.id, 'full')}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => addDish(item, 'full')}
+                      className="w-7 h-7 rounded-lg bg-orange-600 hover:bg-orange-700 text-white flex items-center justify-center transition-all active:scale-90 shadow-2xs cursor-pointer"
+                      aria-label="Increase full portion"
+                    >
+                      <Plus className="w-3 h-3 stroke-[2.5]" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Subtotal Calculation */}
+                <div className="pt-2 border-t border-stone-200/60 flex items-center justify-between">
+                  <span className="text-xs text-stone-500 font-medium">
+                    {portionCounts.total > 0
+                      ? `${portionCounts.total} portion${portionCounts.total > 1 ? 's' : ''} selected`
+                      : 'Select Half or Full portion above'}
                   </span>
-
-                  <button
-                    type="button"
-                    onClick={() => incrementQuantity(item.id)}
-                    className="w-8 h-8 rounded-lg bg-orange-600 hover:bg-orange-700 text-white flex items-center justify-center transition-all active:scale-90 shadow-2xs cursor-pointer"
-                    aria-label={`Increase ${item.name} quantity`}
-                  >
-                    <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
-                  </button>
+                  <span className="text-sm font-black text-stone-900">
+                    ₹{(portionCounts.half * portionPrices.halfPrice + portionCounts.full * portionPrices.fullPrice).toLocaleString('en-IN')}
+                  </span>
                 </div>
               </div>
+            ) : (
+              /* Standard Single Size Stepper */
+              <div className="mt-5 p-3.5 rounded-2xl bg-stone-50 border border-stone-200/80 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <span className="text-xs font-bold text-stone-800 block">
+                      Select Portions
+                    </span>
+                    <span className="text-[11px] text-stone-500">
+                      Add 1x, 2x, 3x directly to your dining order
+                    </span>
+                  </div>
 
-              {/* Item Subtotal Calculation */}
-              <div className="pt-2 border-t border-stone-200/60 flex items-center justify-between">
-                <span className="text-xs text-stone-500 font-medium">
-                  {getQuantity(item.id) > 0 ? (
-                    <>
-                      {getQuantity(item.id)} portion{getQuantity(item.id) > 1 ? 's' : ''} × ₹{item.price}
-                    </>
-                  ) : (
-                    'Base price per portion'
-                  )}
-                </span>
-                <span className="text-sm font-black text-stone-900">
-                  ₹{((Number(item.price) || 0) * Math.max(1, getQuantity(item.id))).toLocaleString('en-IN')}
-                </span>
+                  {/* Stepper */}
+                  <div className="inline-flex items-center bg-white rounded-xl p-1 border border-stone-200 shadow-2xs">
+                    <button
+                      type="button"
+                      onClick={() => decrement(item.id)}
+                      disabled={getQuantity(item.id) === 0}
+                      className="w-8 h-8 rounded-lg bg-stone-100 hover:bg-stone-200 text-stone-700 flex items-center justify-center transition-all active:scale-90 disabled:opacity-30 cursor-pointer"
+                      aria-label={`Decrease ${item.name} quantity`}
+                    >
+                      <Minus className="w-3.5 h-3.5" />
+                    </button>
+
+                    <span className="w-10 text-center text-sm font-black text-stone-900">
+                      {getQuantity(item.id)}
+                    </span>
+
+                    <button
+                      type="button"
+                      onClick={() => addDish(item)}
+                      className="w-8 h-8 rounded-lg bg-orange-600 hover:bg-orange-700 text-white flex items-center justify-center transition-all active:scale-90 shadow-2xs cursor-pointer"
+                      aria-label={`Increase ${item.name} quantity`}
+                    >
+                      <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Item Subtotal Calculation */}
+                <div className="pt-2 border-t border-stone-200/60 flex items-center justify-between">
+                  <span className="text-xs text-stone-500 font-medium">
+                    {getQuantity(item.id) > 0 ? (
+                      <>
+                        {getQuantity(item.id)} portion{getQuantity(item.id) > 1 ? 's' : ''} × ₹{item.price}
+                      </>
+                    ) : (
+                      'Base price per portion'
+                    )}
+                  </span>
+                  <span className="text-sm font-black text-stone-900">
+                    ₹{((Number(item.price) || 0) * Math.max(1, getQuantity(item.id))).toLocaleString('en-IN')}
+                  </span>
+                </div>
               </div>
-            </div>
+            )
           )}
 
           {/* Quick Action Button: Add/Update Order */}
           {item.isAvailable && (
             <div className="mt-3">
-              <button
-                type="button"
-                onClick={() => {
-                  if (getQuantity(item.id) === 0) {
-                    incrementQuantity(item.id);
-                  }
-                  onClose();
-                }}
-                className="w-full py-3.5 px-4 rounded-2xl bg-orange-600 hover:bg-orange-500 text-white font-bold text-sm tracking-wide active:scale-[0.99] transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer"
-              >
-                <ShoppingBag className="w-4 h-4" />
-                <span>
-                  {getQuantity(item.id) > 0
-                    ? `Save ${getQuantity(item.id)} in Favorites & Order • ₹${(Number(item.price) || 0) * getQuantity(item.id)}`
-                    : `Add to Favorites & Order • ₹${item.price}`}
-                </span>
-              </button>
+              {isDual ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (portionCounts.total === 0) {
+                      addDish(item, 'full');
+                    }
+                    onClose();
+                  }}
+                  className="w-full py-3.5 px-4 rounded-2xl bg-orange-600 hover:bg-orange-500 text-white font-bold text-sm tracking-wide active:scale-[0.99] transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  <ShoppingBag className="w-4 h-4" />
+                  <span>
+                    {portionCounts.total > 0
+                      ? `Confirm Order (${portionCounts.total} portions) • ₹${(portionCounts.half * portionPrices.halfPrice + portionCounts.full * portionPrices.fullPrice).toLocaleString('en-IN')}`
+                      : `Add Full Portion • ₹${portionPrices.fullPrice}`}
+                  </span>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (getQuantity(item.id) === 0) {
+                      addDish(item);
+                    }
+                    onClose();
+                  }}
+                  className="w-full py-3.5 px-4 rounded-2xl bg-orange-600 hover:bg-orange-500 text-white font-bold text-sm tracking-wide active:scale-[0.99] transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  <ShoppingBag className="w-4 h-4" />
+                  <span>
+                    {getQuantity(item.id) > 0
+                      ? `Update Table Order (${getQuantity(item.id)} portions) • ₹${(Number(item.price) || 0) * getQuantity(item.id)}`
+                      : `Add to Table Order • ₹${item.price}`}
+                  </span>
+                </button>
+              )}
             </div>
           )}
 

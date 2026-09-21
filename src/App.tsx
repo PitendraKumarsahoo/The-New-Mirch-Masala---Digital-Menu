@@ -16,6 +16,7 @@ import { MenuErrorState } from './components/MenuErrorState';
 import { LoyaltyPage } from './components/loyalty/LoyaltyPage';
 import { ReviewPage } from './components/reviews/ReviewPage';
 import { CustomerProfilePage } from './components/profile/CustomerProfilePage';
+import { MenuOrderBottomBar } from './components/MenuOrderBottomBar';
 import { AdminDashboard } from './admin/AdminDashboard';
 import { Clock, Search, CheckCircle2, ChevronUp, Database, RefreshCw, ChevronLeft, Gift, Star, ShieldCheck } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -525,6 +526,15 @@ export default function App() {
             tab={comingSoonTab}
             onClose={() => setComingSoonTab(null)}
           />
+
+          {/* Floating Table Order Bar - Shown ONLY in Menu Bar Page */}
+          {activeNavTab === 'menu' && (
+            <MenuOrderBottomBar
+              allMenuItems={menuItems}
+              onSelectDish={(item) => setSelectedFoodItem(item)}
+              onNavigateToProfileOrders={() => setActiveNavTab('profile')}
+            />
+          )}
 
           {/* Fixed Mobile Bottom Navigation */}
           <BottomNavigation

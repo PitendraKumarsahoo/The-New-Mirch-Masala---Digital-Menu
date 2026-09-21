@@ -8,6 +8,7 @@ import { Toast, ToastMessage } from './components/Toast';
 
 // Views
 import { AdminDashboardView } from './views/AdminDashboardView';
+import { AdminOrdersView } from './views/AdminOrdersView';
 import { AdminMenuView } from './views/AdminMenuView';
 import { AdminCustomersView } from './views/AdminCustomersView';
 import { AdminVisitsView } from './views/AdminVisitsView';
@@ -53,6 +54,7 @@ import { X, Star, Settings, Award, UserCheck, Activity } from 'lucide-react';
 const TAB_FROM_PATH: Record<string, AdminTab> = {
   '/admin': 'dashboard',
   '/admin/': 'dashboard',
+  '/admin/orders': 'orders',
   '/admin/menu': 'menu',
   '/admin/customers': 'customers',
   '/admin/visits': 'visits',
@@ -65,6 +67,7 @@ const TAB_FROM_PATH: Record<string, AdminTab> = {
 
 const PATH_FROM_TAB: Record<AdminTab, string> = {
   dashboard: '/admin',
+  orders: '/admin/orders',
   menu: '/admin/menu',
   customers: '/admin/customers',
   visits: '/admin/visits',
@@ -291,6 +294,10 @@ const AdminDashboardInner: React.FC = () => {
       title: 'Restaurant Operations Dashboard',
       subtitle: `Google Sheets synced • Logged in as ${user?.name || 'Owner'} (${user?.title || 'Administrator'})`,
     },
+    orders: {
+      title: 'Live Kitchen Display & Order Queue',
+      subtitle: 'Real-time diner orders from website • Update status to notify diner browsers step-by-step',
+    },
     menu: {
       title: 'Menu Catalog & Pricing',
       subtitle: `${menu.length} total food items • Instant availability & Chef Specials controls`,
@@ -357,6 +364,8 @@ const AdminDashboardInner: React.FC = () => {
               }}
             />
           )}
+
+          {currentTab === 'orders' && <AdminOrdersView />}
 
           {currentTab === 'menu' && (
             <AdminMenuView

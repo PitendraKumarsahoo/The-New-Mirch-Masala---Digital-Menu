@@ -4,6 +4,7 @@ import { MenuItem } from '../types';
 import { VegBadge } from './VegBadge';
 import { ImageWithFallback } from './ImageWithFallback';
 import { useCustomerPreferences } from '../services/customerProfileService';
+import { useTableOrder } from '../services/tableOrderService';
 
 interface PopularSectionProps {
   popularItems: MenuItem[];
@@ -11,13 +12,8 @@ interface PopularSectionProps {
 }
 
 export function PopularSection({ popularItems, onSelectItem }: PopularSectionProps) {
-  const {
-    isFavorite,
-    toggleFavorite,
-    getQuantity,
-    incrementQuantity,
-    decrementQuantity,
-  } = useCustomerPreferences();
+  const { isFavorite, toggleFavorite } = useCustomerPreferences();
+  const { getQuantity, increment, decrement } = useTableOrder();
 
   if (popularItems.length === 0) return null;
 
@@ -144,7 +140,7 @@ export function PopularSection({ popularItems, onSelectItem }: PopularSectionPro
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation();
-                          decrementQuantity(item.id);
+                          decrement(item.id);
                         }}
                         className="w-5 h-5 flex items-center justify-center hover:bg-orange-700 active:bg-orange-800 transition-colors cursor-pointer"
                         aria-label={`Decrease ${item.name}`}
@@ -158,7 +154,7 @@ export function PopularSection({ popularItems, onSelectItem }: PopularSectionPro
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation();
-                          incrementQuantity(item.id);
+                          increment(item.id);
                         }}
                         className="w-5 h-5 flex items-center justify-center hover:bg-orange-700 active:bg-orange-800 transition-colors cursor-pointer"
                         aria-label={`Increase ${item.name}`}
@@ -171,7 +167,7 @@ export function PopularSection({ popularItems, onSelectItem }: PopularSectionPro
                       type="button"
                       onClick={(e) => {
                         e.stopPropagation();
-                        incrementQuantity(item.id);
+                        increment(item.id);
                       }}
                       className="px-2 py-0.5 rounded-lg bg-orange-50 hover:bg-orange-100 text-orange-700 font-bold text-[10px] border border-orange-200/80 active:scale-95 transition-all shadow-2xs cursor-pointer flex items-center gap-0.5"
                       aria-label={`Add ${item.name}`}

@@ -1,9 +1,15 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { MenuItem } from '../types';
 import { VegBadge } from './VegBadge';
 import { ImageWithFallback } from './ImageWithFallback';
 import { Flame, Heart, Plus, Minus } from 'lucide-react';
 import { useCustomerPreferences } from '../services/customerProfileService';
+import {
+  useTableOrder,
+  hasDualPortion,
+  getPortionPrices,
+} from '../services/tableOrderService';
+import { PortionSelectionModal } from './orders/PortionSelectionModal';
 
 interface FoodCardProps {
   key?: string | number;
@@ -12,24 +18,20 @@ interface FoodCardProps {
 }
 
 export function FoodCard({ item, onSelect }: FoodCardProps) {
-  const {
-    isFavorite,
-    toggleFavorite,
-    getQuantity,
-    incrementQuantity,
-    decrementQuantity,
-  } = useCustomerPreferences();
+  const { isFavorite, toggleFavorite } = useCustomerPreferences();
+  const { getQuantity, increment, decrement, addDish, getDishPortionCounts } = useTableOrder();
+  const [isPortionModalOpen, setIsPortionModalOpen] = useState(false);
 
   const isFav = isFavorite(item.id);
   const qty = getQuantity(item.id);
 
-  const hasSecondary =
-    typeof item.secondaryPrice === 'number' &&
-    !isNaN(item.secondaryPrice) &&
-    item.secondaryPrice > 0;
+  const isDual = hasDualPortion(item);
+  const portionCounts = getDishPortionCounts(item.id);
+  const totalPortionQty = isDual ? portionCounts.total : qty;
+  const portionPrices = getPortionPrices(item);
 
-  const priceDisplay = hasSecondary
-    ? `₹${item.price} / ₹${item.secondaryPrice}`
+  const priceDisplay = isDual
+    ? `Half ₹${portionPrices.halfPrice} • Full ₹${portionPrices.fullPrice}`
     : `₹${item.price}`;
 
   const handleFavoriteClick = (e: React.MouseEvent) => {
@@ -39,12 +41,20 @@ export function FoodCard({ item, onSelect }: FoodCardProps) {
 
   const handleIncrement = (e: React.MouseEvent) => {
     e.stopPropagation();
-    incrementQuantity(item.id);
+    if (isDual) {
+      setIsPortionModalOpen(true);
+    } else {
+      addDish(item);
+    }
   };
 
   const handleDecrement = (e: React.MouseEvent) => {
     e.stopPropagation();
-    decrementQuantity(item.id);
+    if (isDual) {
+      setIsPortionModalOpen(true);
+    } else {
+      decrement(item.id);
+    }
   };
 
   return (
@@ -132,51 +142,92 @@ export function FoodCard({ item, onSelect }: FoodCardProps) {
               <span className="text-[12px] sm:text-[13px] font-bold text-slate-900 leading-tight">
                 {priceDisplay}
               </span>
-              {qty > 1 && (
+              {totalPortionQty > 1 && !isDual && (
                 <span className="text-[10px] text-emerald-600 font-semibold leading-tight">
-                  Total: ₹{(Number(item.price) || 0) * qty}
+                  Total: ₹{(Number(item.price) || 0) * totalPortionQty}
                 </span>
               )}
             </div>
 
             {item.isAvailable ? (
-              qty > 0 ? (
-                /* Quantity Stepper on Card */
-                <div
-                  className="inline-flex items-center bg-orange-600 text-white rounded-xl shadow-xs border border-orange-700/30 overflow-hidden"
-                  onClick={(e) => e.stopPropagation()}
-                >
+              isDual ? (
+                /* Dual Portion Add / Edit Button */
+                totalPortionQty > 0 ? (
                   <button
                     type="button"
-                    onClick={handleDecrement}
-                    className="w-6 h-6 flex items-center justify-center hover:bg-orange-700 active:bg-orange-800 transition-colors cursor-pointer"
-                    aria-label={`Decrease ${item.name} quantity`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setIsPortionModalOpen(true);
+                    }}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-orange-600 hover:bg-orange-700 text-white font-bold text-[11px] shadow-xs active:scale-95 transition-all cursor-pointer"
+                    aria-label={`Configure portions for ${item.name}`}
                   >
-                    <Minus className="w-3 h-3" />
+                    <span>
+                      {portionCounts.half > 0 && portionCounts.full > 0
+                        ? `H:${portionCounts.half} F:${portionCounts.full}`
+                        : portionCounts.half > 0
+                        ? `${portionCounts.half} Half`
+                        : `${portionCounts.full} Full`}
+                    </span>
+                    <span className="text-[9px] font-normal text-orange-200 uppercase">
+                      Edit
+                    </span>
                   </button>
-                  <span className="px-1.5 text-[11px] font-black min-w-[20px] text-center">
-                    {qty}
-                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setIsPortionModalOpen(true);
+                    }}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-orange-50 hover:bg-orange-100 text-orange-700 font-bold text-[11px] border border-orange-200/80 active:scale-95 transition-all shadow-2xs cursor-pointer"
+                    aria-label={`Choose Half or Full portion for ${item.name}`}
+                  >
+                    <Plus className="w-3 h-3 stroke-[2.5]" />
+                    <span>ADD</span>
+                    <span className="text-[9px] font-medium text-orange-500 opacity-80">
+                      Half/Full
+                    </span>
+                  </button>
+                )
+              ) : (
+                /* Standard Single Price Stepper */
+                qty > 0 ? (
+                  <div
+                    className="inline-flex items-center bg-orange-600 text-white rounded-xl shadow-xs border border-orange-700/30 overflow-hidden"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <button
+                      type="button"
+                      onClick={handleDecrement}
+                      className="w-6 h-6 flex items-center justify-center hover:bg-orange-700 active:bg-orange-800 transition-colors cursor-pointer"
+                      aria-label={`Decrease ${item.name} quantity`}
+                    >
+                      <Minus className="w-3 h-3" />
+                    </button>
+                    <span className="px-1.5 text-[11px] font-black min-w-[20px] text-center">
+                      {qty}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={handleIncrement}
+                      className="w-6 h-6 flex items-center justify-center hover:bg-orange-700 active:bg-orange-800 transition-colors cursor-pointer"
+                      aria-label={`Increase ${item.name} quantity`}
+                    >
+                      <Plus className="w-3 h-3" />
+                    </button>
+                  </div>
+                ) : (
                   <button
                     type="button"
                     onClick={handleIncrement}
-                    className="w-6 h-6 flex items-center justify-center hover:bg-orange-700 active:bg-orange-800 transition-colors cursor-pointer"
-                    aria-label={`Increase ${item.name} quantity`}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-orange-50 hover:bg-orange-100 text-orange-700 font-bold text-[11px] border border-orange-200/80 active:scale-95 transition-all shadow-2xs cursor-pointer"
+                    aria-label={`Add ${item.name} to order`}
                   >
-                    <Plus className="w-3 h-3" />
+                    <Plus className="w-3 h-3 stroke-[2.5]" />
+                    <span>ADD</span>
                   </button>
-                </div>
-              ) : (
-                /* + ADD Button on Card */
-                <button
-                  type="button"
-                  onClick={handleIncrement}
-                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-orange-50 hover:bg-orange-100 text-orange-700 font-bold text-[11px] border border-orange-200/80 active:scale-95 transition-all shadow-2xs cursor-pointer"
-                  aria-label={`Add ${item.name} to favorites and order`}
-                >
-                  <Plus className="w-3 h-3 stroke-[2.5]" />
-                  <span>ADD</span>
-                </button>
+                )
               )
             ) : (
               <span className="text-[9px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded uppercase tracking-wider">
@@ -186,6 +237,15 @@ export function FoodCard({ item, onSelect }: FoodCardProps) {
           </div>
         </div>
       </div>
+
+      {/* Portion Selection Modal for Half/Full options */}
+      {isDual && (
+        <PortionSelectionModal
+          item={item}
+          isOpen={isPortionModalOpen}
+          onClose={() => setIsPortionModalOpen(false)}
+        />
+      )}
     </article>
   );
 }

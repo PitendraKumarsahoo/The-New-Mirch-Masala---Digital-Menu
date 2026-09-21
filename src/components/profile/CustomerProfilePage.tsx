@@ -21,11 +21,14 @@ import { PastVisitsTab } from './PastVisitsTab';
 import { ProfileAccountCard } from './ProfileAccountCard';
 import { CustomerActivityHistory } from './CustomerActivityHistory';
 import { ActivityLog } from './ActivityLog';
+import { PastOrdersTab } from './PastOrdersTab';
+import { usePlacedOrders } from '../../services/orderHistoryService';
 import {
   ChevronLeft,
   Heart,
   Flame,
   Clock,
+  ShoppingBag,
   X,
   Phone,
   Lock,
@@ -38,14 +41,14 @@ import {
   Tag,
 } from 'lucide-react';
 
-export { CustomerActivityHistory, ActivityLog };
+export { CustomerActivityHistory, ActivityLog, PastOrdersTab };
 
 interface CustomerProfilePageProps {
   onBackToMenu: () => void;
   allMenuItems: MenuItem[];
   onSelectDish: (item: MenuItem) => void;
   onNavigateToTab: (tab: BottomNavTab) => void;
-  initialSection?: 'favorites' | 'spice' | 'activity' | 'visits';
+  initialSection?: 'orders' | 'favorites' | 'spice' | 'activity' | 'visits';
 }
 
 export const CustomerProfilePage: React.FC<CustomerProfilePageProps> = ({
@@ -53,16 +56,19 @@ export const CustomerProfilePage: React.FC<CustomerProfilePageProps> = ({
   allMenuItems,
   onSelectDish,
   onNavigateToTab,
-  initialSection = 'activity',
+  initialSection = 'orders',
 }) => {
-  const [activeSection, setActiveSection] = useState<'favorites' | 'spice' | 'activity' | 'visits'>(
-    initialSection || 'activity'
+  const [activeSection, setActiveSection] = useState<'orders' | 'favorites' | 'spice' | 'activity' | 'visits'>(
+    initialSection || 'orders'
   );
   const [activityFilter, setActivityFilter] = useState<'all' | 'visits' | 'redemptions'>('all');
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [loyalty, setLoyalty] = useState<LoyaltyStatus | null>(null);
   const [visits, setVisits] = useState<Visit[]>([]);
   const [isLoadingCustomer, setIsLoadingCustomer] = useState(true);
+
+  // Placed orders hook for counts
+  const { orders: placedOrders, activeOrders } = usePlacedOrders();
 
   // Quick Auth Modal State
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
@@ -211,12 +217,38 @@ export const CustomerProfilePage: React.FC<CustomerProfilePageProps> = ({
           demoCustomers={demoCustomers}
         />
 
-        {/* 3-Section Navigation Segment */}
-        <div className="grid grid-cols-3 gap-1 bg-white p-1 rounded-2xl border border-stone-200/80 shadow-2xs">
+        {/* 4-Section Navigation Segment */}
+        <div className="grid grid-cols-4 gap-1 bg-white p-1 rounded-2xl border border-stone-200/80 shadow-2xs">
+          <button
+            type="button"
+            onClick={() => setActiveSection('orders')}
+            className={`py-2 px-1 text-[11px] font-bold rounded-xl transition-all flex items-center justify-center gap-1 cursor-pointer ${
+              activeSection === 'orders'
+                ? 'bg-orange-600 text-white shadow-xs'
+                : 'text-stone-600 hover:text-stone-900 hover:bg-stone-50'
+            }`}
+          >
+            <ShoppingBag className="w-3.5 h-3.5" />
+            <span>Orders</span>
+            {placedOrders.length > 0 && (
+              <span
+                className={`text-[9px] px-1.5 py-0.2 rounded-full font-black ${
+                  activeSection === 'orders'
+                    ? 'bg-white/25 text-white'
+                    : activeOrders.length > 0
+                    ? 'bg-orange-500 text-white animate-pulse'
+                    : 'bg-stone-100 text-stone-700'
+                }`}
+              >
+                {activeOrders.length > 0 ? `${activeOrders.length} live` : placedOrders.length}
+              </span>
+            )}
+          </button>
+
           <button
             type="button"
             onClick={() => setActiveSection('activity')}
-            className={`py-2 px-2 text-[11px] font-bold rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+            className={`py-2 px-1 text-[11px] font-bold rounded-xl transition-all flex items-center justify-center gap-1 cursor-pointer ${
               activeSection === 'activity' || activeSection === 'visits'
                 ? 'bg-orange-600 text-white shadow-xs'
                 : 'text-stone-600 hover:text-stone-900 hover:bg-stone-50'
@@ -240,7 +272,7 @@ export const CustomerProfilePage: React.FC<CustomerProfilePageProps> = ({
           <button
             type="button"
             onClick={() => setActiveSection('favorites')}
-            className={`py-2 px-2 text-[11px] font-bold rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+            className={`py-2 px-1 text-[11px] font-bold rounded-xl transition-all flex items-center justify-center gap-1 cursor-pointer ${
               activeSection === 'favorites'
                 ? 'bg-orange-600 text-white shadow-xs'
                 : 'text-stone-600 hover:text-stone-900 hover:bg-stone-50'
@@ -268,7 +300,7 @@ export const CustomerProfilePage: React.FC<CustomerProfilePageProps> = ({
           <button
             type="button"
             onClick={() => setActiveSection('spice')}
-            className={`py-2 px-2 text-[11px] font-bold rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+            className={`py-2 px-1 text-[11px] font-bold rounded-xl transition-all flex items-center justify-center gap-1 cursor-pointer ${
               activeSection === 'spice'
                 ? 'bg-orange-600 text-white shadow-xs'
                 : 'text-stone-600 hover:text-stone-900 hover:bg-stone-50'
@@ -284,6 +316,12 @@ export const CustomerProfilePage: React.FC<CustomerProfilePageProps> = ({
         </div>
 
         {/* Section Viewports */}
+        {activeSection === 'orders' && (
+          <PastOrdersTab
+            onBrowseMenu={onBackToMenu}
+            customerId={customer?.customerId}
+          />
+        )}
         {activeSection === 'favorites' && (
           <FavoriteDishesTab
             favoriteIds={favoriteDishIds}

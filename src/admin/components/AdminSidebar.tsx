@@ -14,11 +14,13 @@ import {
   UserCheck,
   Activity,
   ShieldCheck,
+  ChefHat,
 } from 'lucide-react';
 import { useAdminAuth } from '../context/AdminAuthContext';
 
 export type AdminTab =
   | 'dashboard'
+  | 'orders'
   | 'menu'
   | 'customers'
   | 'visits'
@@ -43,6 +45,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({ currentTab, onNaviga
     badge?: string;
   }> = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+    { id: 'orders', label: 'Live Orders & KDS', icon: ChefHat, badge: 'Live' },
     { id: 'menu', label: 'Menu Management', icon: UtensilsCrossed },
     { id: 'customers', label: 'Customers', icon: Users },
     { id: 'visits', label: 'Visits', icon: CalendarCheck },
