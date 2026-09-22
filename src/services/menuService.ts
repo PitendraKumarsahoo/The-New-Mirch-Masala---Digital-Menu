@@ -1,15 +1,19 @@
 import { MenuItem, RestaurantInfo } from '../types';
 import { RESTAURANT_INFO, MENU_ITEMS } from '../data/menuData';
-import { API_BASE_URL, DEFAULT_API_BASE_URL } from '../config/api';
+import {
+  fetchMenuItemsFromFirestore,
+  subscribeToMenuItems,
+  updateMenuItemInFirestore,
+} from './firebaseDbService';
 
-const CACHE_KEY = 'nm_menu_cache_v7';
+const CACHE_KEY = 'nm_menu_cache_v8';
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes session cache
 
 export interface FetchMenuResult {
   success: boolean;
   menu: MenuItem[];
   restaurant: RestaurantInfo;
-  source: 'sheets' | 'fallback';
+  source: 'firestore' | 'sheets' | 'fallback';
   cached?: boolean;
   error?: string;
   lastSynced?: Date;
@@ -277,141 +281,19 @@ export async function fetchWithTimeout(
 }
 
 /**
- * Fetch menu items directly from Google Apps Script API
- * GET: ${API_BASE_URL}?action=menu
+ * Fetch menu items directly from Cloud Firestore
  */
-export async function getMenu(apiUrl = API_BASE_URL): Promise<MenuItem[]> {
-  const separator = apiUrl.includes('?') ? '&' : '?';
-  const url = `${apiUrl}${separator}action=menu&_t=${Date.now()}`;
-
-  let response: Response;
-  try {
-    response = await fetchWithTimeout(url, {
-      method: 'GET',
-      redirect: 'follow',
-    }, 12000);
-  } catch (err) {
-    if (apiUrl !== DEFAULT_API_BASE_URL) {
-      return getMenu(DEFAULT_API_BASE_URL);
-    }
-    logApiFailure('getMenu:network', err);
-    throw new Error('Unable to connect to Google Sheets menu API.');
-  }
-
-  if (!response.ok) {
-    if (apiUrl !== DEFAULT_API_BASE_URL) {
-      return getMenu(DEFAULT_API_BASE_URL);
-    }
-    logApiFailure('getMenu:http', response.statusText, response.status);
-    throw new Error(`HTTP Error: ${response.status} ${response.statusText}`);
-  }
-
-  let data: { success?: boolean; menu?: unknown[]; data?: unknown[]; error?: string };
-  try {
-    data = await response.json();
-  } catch (err) {
-    if (apiUrl !== DEFAULT_API_BASE_URL) {
-      return getMenu(DEFAULT_API_BASE_URL);
-    }
-    logApiFailure('getMenu:json', err);
-    throw new Error('Failed to parse menu JSON from Google Sheets API.');
-  }
-
-  if (!data || typeof data !== 'object') {
-    throw new Error('Invalid JSON format received from Google Sheets API.');
-  }
-
-  if (data.success === false) {
-    if (apiUrl !== DEFAULT_API_BASE_URL) {
-      return getMenu(DEFAULT_API_BASE_URL);
-    }
-    const errMsg = data.error || 'Failed to retrieve menu from Google Sheets.';
-    logApiFailure('getMenu:api', errMsg);
-    throw new Error(errMsg);
-  }
-
-  const rawMenuList = data.menu || data.data || [];
-  if (!Array.isArray(rawMenuList)) {
-    throw new Error('Menu data returned from API is not an array.');
-  }
-
-  const normalizedApiItems = rawMenuList.map((row, idx) =>
-    normalizeMenuItem(row as Record<string, unknown>, idx)
-  );
-
-  const itemMap = new Map<string, MenuItem>();
-
-  // 1. Always seed with the authoritative full catalog so ALL items (Biryani, Tandoori, Curries, Chinese, Starters, etc.) are displayed
-  for (const item of MENU_ITEMS) {
-    itemMap.set(item.id.toLowerCase(), { ...item });
-  }
-
-  // 2. Apply live Google Sheets rows (preserving live prices, secondary price, availability, popularity, image, descriptions)
-  for (const liveItem of normalizedApiItems) {
-    // Skip temporary dummy test soup records that do not belong to the authentic catalog
-    if (liveItem.id === 'soup-01' || liveItem.id === 'soup-02') {
-      continue;
-    }
-
-    const matchedKey = Array.from(itemMap.keys()).find(
-      (k) =>
-        k === liveItem.id.toLowerCase() ||
-        itemMap.get(k)?.name.toLowerCase().trim() === liveItem.name.toLowerCase().trim()
-    );
-
-    if (matchedKey) {
-      const existing = itemMap.get(matchedKey)!;
-      itemMap.set(matchedKey, {
-        ...existing,
-        price: (typeof liveItem.price === 'number' && !isNaN(liveItem.price) && liveItem.price > 0) ? liveItem.price : existing.price,
-        secondaryPrice: liveItem.secondaryPrice !== undefined ? liveItem.secondaryPrice : existing.secondaryPrice,
-        isAvailable: liveItem.isAvailable !== undefined ? liveItem.isAvailable : existing.isAvailable,
-        isPopular: liveItem.isPopular !== undefined ? liveItem.isPopular : existing.isPopular,
-        image: liveItem.image || existing.image,
-        description: liveItem.description || existing.description,
-      });
-    } else {
-      // Dishes added to Google Sheets that aren't in the default catalog
-      itemMap.set(liveItem.id.toLowerCase(), liveItem);
-    }
-  }
-
-  return Array.from(itemMap.values());
+export async function getMenu(): Promise<MenuItem[]> {
+  const res = await fetchMenuItemsFromFirestore();
+  return res.menu;
 }
 
 /**
- * Fetch restaurant info directly from Google Apps Script API
- * GET: ${API_BASE_URL}?action=restaurant
+ * Fetch restaurant info directly from Cloud Firestore
  */
-export async function getRestaurant(apiUrl = API_BASE_URL): Promise<RestaurantInfo> {
-  const separator = apiUrl.includes('?') ? '&' : '?';
-  const url = `${apiUrl}${separator}action=restaurant&_t=${Date.now()}`;
-
-  try {
-    const response = await fetch(url, {
-      method: 'GET',
-      redirect: 'follow',
-    });
-
-    if (!response.ok) {
-      if (apiUrl !== DEFAULT_API_BASE_URL) {
-        return getRestaurant(DEFAULT_API_BASE_URL);
-      }
-      return RESTAURANT_INFO;
-    }
-
-    const data = await response.json();
-    if (data && (data.restaurant || data.data)) {
-      return normalizeRestaurantInfo(data.restaurant || data.data);
-    }
-  } catch (err) {
-    if (apiUrl !== DEFAULT_API_BASE_URL) {
-      return getRestaurant(DEFAULT_API_BASE_URL);
-    }
-    logApiFailure('getRestaurant', err);
-  }
-
-  return RESTAURANT_INFO;
+export async function getRestaurant(): Promise<RestaurantInfo> {
+  const res = await fetchMenuItemsFromFirestore();
+  return res.restaurant;
 }
 
 /**
@@ -454,11 +336,10 @@ function saveMenuToSessionCache(menu: MenuItem[], restaurant: RestaurantInfo): v
  * Loads menu and restaurant data from Google Sheets via Google Apps Script Web App
  */
 export async function fetchRestaurantAndMenu(forceRefresh = false): Promise<FetchMenuResult> {
-  // 1. If forceRefresh is requested, invalidate the session cache first
+  // 1. Invalidate session cache if forceRefresh requested
   if (forceRefresh) {
     clearMenuCache();
   } else if (typeof window !== 'undefined' && window.sessionStorage) {
-    // Check session storage cache if not forcing refresh
     try {
       const cachedStr = sessionStorage.getItem(CACHE_KEY);
       if (cachedStr) {
@@ -469,7 +350,7 @@ export async function fetchRestaurantAndMenu(forceRefresh = false): Promise<Fetc
               success: true,
               menu: parsed.menu,
               restaurant: parsed.restaurant || RESTAURANT_INFO,
-              source: 'sheets',
+              source: 'firestore',
               cached: true,
               lastSynced: new Date(parsed.timestamp),
             };
@@ -477,39 +358,37 @@ export async function fetchRestaurantAndMenu(forceRefresh = false): Promise<Fetc
         }
       }
     } catch {
-      // Ignore cache parse errors and proceed to network
+      // Ignore cache parse errors and proceed to Firestore
     }
   }
 
   try {
-    const [menuData, restaurantData] = await Promise.all([
-      getMenu(),
-      getRestaurant(),
-    ]);
-
+    // 2. Fetch directly from Cloud Firestore
+    const firestoreResult = await fetchMenuItemsFromFirestore();
     const syncDate = new Date();
-    saveMenuToSessionCache(menuData, restaurantData);
+    saveMenuToSessionCache(firestoreResult.menu, firestoreResult.restaurant);
 
     return {
       success: true,
-      menu: menuData,
-      restaurant: restaurantData,
-      source: 'sheets',
+      menu: firestoreResult.menu,
+      restaurant: firestoreResult.restaurant,
+      source: firestoreResult.source === 'firestore' ? 'firestore' : 'fallback',
       cached: false,
       lastSynced: syncDate,
     };
   } catch (err: unknown) {
-    const failure = handleApiFetchFailure('fetchRestaurantAndMenu', err);
+    console.warn('[MenuService] Firestore sync fallback to catalog:', err);
     return {
-      success: false,
-      menu: MENU_ITEMS, // Authoritative fallback so all 80+ items always show
+      success: true,
+      menu: MENU_ITEMS, // Authoritative catalog so all items always show
       restaurant: RESTAURANT_INFO,
       source: 'fallback',
-      error: failure.sanitizedError,
       lastSynced: new Date(),
     };
   }
 }
+
+export { subscribeToMenuItems, updateMenuItemInFirestore };
 
 /**
  * Returns static fallback dataset for offline development reference

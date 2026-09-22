@@ -6,9 +6,9 @@
  */
 
 import { Review, ReviewSubmissionInput, ReviewTopic, GoogleReviewConfig } from '../types/review';
-import { API_BASE_URL } from '../config/api';
 import { getCustomerSession } from './loyaltyService';
 import { fetchGoogleReviewUrl } from './googleBusinessProfileService';
+import { submitReviewToFirestore, fetchReviewsFromFirestore } from './firebaseDbService';
 
 const LOCAL_REVIEWS_STORAGE_KEY = 'mirch_reviews_local_db_v1';
 
@@ -79,39 +79,17 @@ export async function getGoogleReviewConfig(
   let locationId = '';
 
   try {
-    const url = `${API_BASE_URL}?action=getGoogleReviewConfig&restaurantId=${encodeURIComponent(
-      restaurantId
-    )}`;
-    const res = await fetch(url);
-    if (res.ok) {
-      const data = await res.json();
-      if (data && data.success) {
-        fetchedUrl = (data.googleReviewUrl || '').trim();
-        isConnected = Boolean(data.businessProfileConnected);
-        accountId = data.businessProfileAccountId;
-        locationId = data.businessProfileLocationId;
-      }
+    const fallbackConfig = await fetchGoogleReviewUrl(restaurantId);
+    if (fallbackConfig.googleReviewUrl) {
+      fetchedUrl = fallbackConfig.googleReviewUrl;
+      isConnected = Boolean(fallbackConfig.businessProfileConnected);
+      accountId = '';
+      locationId = '';
     }
   } catch {
-    // Network/offline: fall back to cached
     const db = getLocalReviewsDB();
     if (db.googleReviewUrlCache && db.googleReviewUrlCache[restaurantId]) {
       fetchedUrl = db.googleReviewUrlCache[restaurantId];
-    }
-  }
-
-  // If not yet resolved from Apps Script or cache, use fetchGoogleReviewUrl
-  if (!fetchedUrl) {
-    try {
-      const fallbackConfig = await fetchGoogleReviewUrl(restaurantId);
-      if (fallbackConfig.googleReviewUrl) {
-        fetchedUrl = fallbackConfig.googleReviewUrl;
-        if (fallbackConfig.businessProfileConnected) {
-          isConnected = fallbackConfig.businessProfileConnected;
-        }
-      }
-    } catch {
-      // Ignore
     }
   }
 
@@ -125,7 +103,9 @@ export async function getGoogleReviewConfig(
 
   return {
     restaurantId,
-    googleReviewUrl: fetchedUrl,
+    googleReviewUrl:
+      fetchedUrl ||
+      'https://www.google.com/maps/search/?api=1&query=The+New+Mirch+Masala+Gunupur+Odisha',
     isConfigured: Boolean(fetchedUrl && fetchedUrl.length > 0),
     businessProfileConnected: isConnected,
     businessProfileAccountId: accountId,
@@ -193,37 +173,12 @@ export async function submitReview(
     status: 'submitted_internal',
   };
 
-  // 1. Send to Apps Script Web App API
-  try {
-    const apiUrl = `${API_BASE_URL}?action=submitReview`;
-    const res = await fetch(apiUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'text/plain;charset=utf-8',
-      },
-      body: JSON.stringify({
-        restaurantId,
-        customerId,
-        customerName,
-        rating,
-        topics,
-        feedback,
-        googleReviewUrl,
-      }),
-    });
+  // 1. Send directly to Cloud Firestore
+  submitReviewToFirestore(newReview).catch((err) =>
+    console.warn('[ReviewService] Firestore review submit notice:', err)
+  );
 
-    if (res.ok) {
-      const data = await res.json();
-      if (data && data.success && data.review) {
-        newReview.reviewId = data.review.reviewId || newReview.reviewId;
-        newReview.googleReviewUrl = data.review.googleReviewUrl || newReview.googleReviewUrl;
-      }
-    }
-  } catch {
-    // Offline resilience: proceeds with local copy
-  }
-
-  // 2. Persist in local storage
+  // 2. Persist in local storage for instantaneous UI response
   const db = getLocalReviewsDB();
   db.reviews.unshift(newReview);
   saveLocalReviewsDB(db);
@@ -255,24 +210,6 @@ export async function markReviewRedirected(
     saveLocalReviewsDB(db);
   }
 
-  // 2. Send update to Apps Script API
-  try {
-    const url = `${API_BASE_URL}?action=updateReviewStatus`;
-    await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'text/plain;charset=utf-8',
-      },
-      body: JSON.stringify({
-        reviewId,
-        restaurantId,
-        status: 'google_redirected',
-      }),
-    });
-  } catch {
-    // offline
-  }
-
   return { success: true };
 }
 
@@ -284,21 +221,6 @@ export async function getCustomerReviews(
   restaurantId = 'mirch-masala-01'
 ): Promise<{ success: boolean; reviews: Review[]; error?: string }> {
   if (!customerId) return { success: true, reviews: [] };
-
-  try {
-    const url = `${API_BASE_URL}?action=getCustomerReviews&customerId=${encodeURIComponent(
-      customerId
-    )}&restaurantId=${encodeURIComponent(restaurantId)}`;
-    const res = await fetch(url);
-    if (res.ok) {
-      const data = await res.json();
-      if (data && data.success && Array.isArray(data.reviews)) {
-        return { success: true, reviews: data.reviews };
-      }
-    }
-  } catch {
-    // fallback to local
-  }
 
   const db = getLocalReviewsDB();
   const matched = db.reviews.filter(

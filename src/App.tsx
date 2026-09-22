@@ -17,7 +17,13 @@ import { LoyaltyPage } from './components/loyalty/LoyaltyPage';
 import { ReviewPage } from './components/reviews/ReviewPage';
 import { CustomerProfilePage } from './components/profile/CustomerProfilePage';
 import { MenuOrderBottomBar } from './components/MenuOrderBottomBar';
+import { OrderToast } from './components/orders/OrderToast';
+import { FullScreenOrderModal } from './components/orders/FullScreenOrderModal';
+import { CustomerAuthModal } from './components/auth/CustomerAuthModal';
 import { AdminDashboard } from './admin/AdminDashboard';
+import { auth } from './config/firebase';
+import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
+import { syncFavoritesFromFirestore, useCustomerPreferences } from './services/customerProfileService';
 import { Clock, Search, CheckCircle2, ChevronUp, Database, RefreshCw, ChevronLeft, Gift, Star, ShieldCheck } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -27,7 +33,7 @@ export default function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [isRetrying, setIsRetrying] = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
-  const [dataSource, setDataSource] = useState<'sheets' | 'fallback'>('sheets');
+  const [dataSource, setDataSource] = useState<'firestore' | 'sheets' | 'fallback'>('firestore');
   const [connectionStatus, setConnectionStatus] = useState<SyncConnectionStatus>('fresh');
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -36,6 +42,24 @@ export default function App() {
   const [selectedFoodItem, setSelectedFoodItem] = useState<MenuItem | null>(null);
   const [activeNavTab, setActiveNavTab] = useState<BottomNavTab>('menu');
   const [comingSoonTab, setComingSoonTab] = useState<BottomNavTab | null>(null);
+  const [isOrderModalOpen, setIsOrderModalOpen] = useState(false);
+
+  // Customer Firebase Authentication & Profile State
+  const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const { favoriteDishIds } = useCustomerPreferences();
+
+  // Listen to Firebase Auth state and sync cloud favorites
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      setCurrentUser(user);
+      if (user) {
+        // Automatically sync customer favorites from Firestore to local state
+        await syncFavoritesFromFirestore(user.uid);
+      }
+    });
+    return () => unsubscribe();
+  }, []);
 
   // Path tracking for dedicated /admin route
   const [currentPath, setCurrentPath] = useState(() => {
@@ -45,13 +69,142 @@ export default function App() {
     return '/';
   });
 
+  // Navigation & History Manager for Mobile Back Swipe and Hardware Back Button
+  const isOrderModalOpenRef = useRef(false);
+  const selectedFoodItemRef = useRef<MenuItem | null>(null);
+  const comingSoonTabRef = useRef<BottomNavTab | null>(null);
+  const activeNavTabRef = useRef<BottomNavTab>('menu');
+  const suppressNextPopStateRef = useRef(false);
+
+  // Set initial root history state
   useEffect(() => {
-    const handleLocationChange = () => {
+    if (typeof window !== 'undefined' && !window.history.state) {
+      window.history.replaceState({ view: 'menu', tab: 'menu' }, '');
+    }
+  }, []);
+
+  // Modal & View Open/Close Handlers that keep browser history in perfect sync
+  const handleOpenOrderModal = useCallback(() => {
+    isOrderModalOpenRef.current = true;
+    setIsOrderModalOpen(true);
+    if (typeof window !== 'undefined' && window.history.state?.view !== 'order-modal') {
+      window.history.pushState({ view: 'order-modal' }, '');
+    }
+  }, []);
+
+  const handleCloseOrderModal = useCallback(() => {
+    if (!isOrderModalOpenRef.current && !isOrderModalOpen) return;
+    isOrderModalOpenRef.current = false;
+    setIsOrderModalOpen(false);
+
+    // Pop the browser history state cleanly if currently at 'order-modal'
+    if (typeof window !== 'undefined' && window.history.state?.view === 'order-modal') {
+      suppressNextPopStateRef.current = true;
+      window.history.back();
+    }
+  }, [isOrderModalOpen]);
+
+  const handleOpenFoodDetail = useCallback((item: MenuItem) => {
+    selectedFoodItemRef.current = item;
+    setSelectedFoodItem(item);
+    if (typeof window !== 'undefined' && window.history.state?.view !== 'food-detail') {
+      window.history.pushState({ view: 'food-detail', itemId: item.id }, '');
+    }
+  }, []);
+
+  const handleCloseFoodDetail = useCallback(() => {
+    if (!selectedFoodItemRef.current && !selectedFoodItem) return;
+    selectedFoodItemRef.current = null;
+    setSelectedFoodItem(null);
+    if (typeof window !== 'undefined' && window.history.state?.view === 'food-detail') {
+      suppressNextPopStateRef.current = true;
+      window.history.back();
+    }
+  }, [selectedFoodItem]);
+
+  const handleOpenComingSoon = useCallback((tab: BottomNavTab) => {
+    comingSoonTabRef.current = tab;
+    setComingSoonTab(tab);
+    if (typeof window !== 'undefined' && window.history.state?.view !== 'coming-soon') {
+      window.history.pushState({ view: 'coming-soon', tab }, '');
+    }
+  }, []);
+
+  const handleCloseComingSoon = useCallback(() => {
+    if (!comingSoonTabRef.current && !comingSoonTab) return;
+    comingSoonTabRef.current = null;
+    setComingSoonTab(null);
+    if (typeof window !== 'undefined' && window.history.state?.view === 'coming-soon') {
+      suppressNextPopStateRef.current = true;
+      window.history.back();
+    }
+  }, [comingSoonTab]);
+
+  const handleBottomTabSelect = useCallback((tab: BottomNavTab) => {
+    if (tab === activeNavTabRef.current) return;
+    if (tab === 'menu') {
+      activeNavTabRef.current = 'menu';
+      setActiveNavTab('menu');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      if (typeof window !== 'undefined' && window.history.state?.view === 'tab') {
+        suppressNextPopStateRef.current = true;
+        window.history.back();
+      }
+    } else if (tab === 'rewards' || tab === 'review' || tab === 'profile') {
+      if (typeof window !== 'undefined') {
+        window.history.pushState({ view: 'tab', tab }, '');
+      }
+      activeNavTabRef.current = tab;
+      setActiveNavTab(tab);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } else {
+      handleOpenComingSoon(tab);
+    }
+  }, [handleOpenComingSoon]);
+
+  // Popstate listener: catches phone back swipe gestures and hardware back buttons
+  useEffect(() => {
+    const handlePopState = (e: PopStateEvent) => {
+      // If we programmatically called history.back() because user explicitly closed a modal/tab, ignore
+      if (suppressNextPopStateRef.current) {
+        suppressNextPopStateRef.current = false;
+        return;
+      }
+
+      // Handle closing in priority order; return after handling exactly one view layer
+      if (isOrderModalOpenRef.current || isOrderModalOpen) {
+        isOrderModalOpenRef.current = false;
+        setIsOrderModalOpen(false);
+        return;
+      }
+
+      if (selectedFoodItemRef.current || selectedFoodItem) {
+        selectedFoodItemRef.current = null;
+        setSelectedFoodItem(null);
+        return;
+      }
+
+      if (comingSoonTabRef.current || comingSoonTab) {
+        comingSoonTabRef.current = null;
+        setComingSoonTab(null);
+        return;
+      }
+
+      if (activeNavTabRef.current !== 'menu') {
+        const stateTab = e.state?.tab as BottomNavTab | undefined;
+        const targetTab = stateTab || 'menu';
+        activeNavTabRef.current = targetTab;
+        setActiveNavTab(targetTab);
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        return;
+      }
+
       setCurrentPath(window.location.pathname);
     };
-    window.addEventListener('popstate', handleLocationChange);
-    return () => window.removeEventListener('popstate', handleLocationChange);
-  }, []);
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [isOrderModalOpen, selectedFoodItem, comingSoonTab, activeNavTab]);
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [scrollProgress, setScrollProgress] = useState(0);
@@ -266,24 +419,6 @@ export default function App() {
     setDietaryFilter('all');
   };
 
-  const handleBottomTabSelect = (tab: BottomNavTab) => {
-    if (tab === 'menu') {
-      setActiveNavTab('menu');
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-    } else if (tab === 'rewards') {
-      setActiveNavTab('rewards');
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-    } else if (tab === 'review') {
-      setActiveNavTab('review');
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-    } else if (tab === 'profile') {
-      setActiveNavTab('profile');
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-    } else {
-      setComingSoonTab(tab);
-    }
-  };
-
   // Phase 6: Dedicated Owner Dashboard Route (/admin)
   if (currentPath.startsWith('/admin')) {
     return <AdminDashboard />;
@@ -344,20 +479,20 @@ export default function App() {
                 </div>
               </div>
 
-              <LoyaltyPage onBackToMenu={() => setActiveNavTab('menu')} />
+              <LoyaltyPage onBackToMenu={() => handleBottomTabSelect('menu')} />
             </div>
           ) : activeNavTab === 'review' ? (
             /* Phase 5: Google Review Integration & One-Click Review Flow */
             <ReviewPage
-              onBackToMenu={() => setActiveNavTab('menu')}
+              onBackToMenu={() => handleBottomTabSelect('menu')}
               restaurantId={restaurantInfo.restaurantId || 'mirch-masala-01'}
             />
           ) : activeNavTab === 'profile' ? (
             /* Phase 2: Customer Profile (Favorites, Spice Preferences, Past Visits) */
             <CustomerProfilePage
-              onBackToMenu={() => setActiveNavTab('menu')}
+              onBackToMenu={() => handleBottomTabSelect('menu')}
               allMenuItems={menuItems}
-              onSelectDish={(item) => setSelectedFoodItem(item)}
+              onSelectDish={(item) => handleOpenFoodDetail(item)}
               onNavigateToTab={(tab) => handleBottomTabSelect(tab)}
             />
           ) : isLoading ? (
@@ -412,6 +547,8 @@ export default function App() {
               <RestaurantHeader
                 restaurant={restaurantInfo}
                 connectionStatus={connectionStatus}
+                currentUser={currentUser}
+                onOpenAuthModal={() => setIsAuthModalOpen(true)}
               />
 
               {/* Sticky Search Bar */}
@@ -450,7 +587,7 @@ export default function App() {
                 {selectedCategory === 'All' && !searchQuery.trim() && dietaryFilter === 'all' && popularItems.length > 0 && (
                   <PopularSection
                     popularItems={popularItems}
-                    onSelectItem={(item) => setSelectedFoodItem(item)}
+                    onSelectItem={(item) => handleOpenFoodDetail(item)}
                   />
                 )}
 
@@ -459,7 +596,7 @@ export default function App() {
                   items={filteredItems}
                   selectedCategory={selectedCategory}
                   searchQuery={searchQuery}
-                  onSelectItem={(item) => setSelectedFoodItem(item)}
+                  onSelectItem={(item) => handleOpenFoodDetail(item)}
                   onResetSearch={handleResetSearch}
                   isLoading={isCategoryLoading}
                 />
@@ -518,23 +655,55 @@ export default function App() {
           {/* Food Detail Modal / Sheet */}
           <FoodDetail
             item={selectedFoodItem}
-            onClose={() => setSelectedFoodItem(null)}
+            onClose={handleCloseFoodDetail}
           />
 
           {/* Coming Soon Modal for other tabs */}
           <ComingSoonModal
             tab={comingSoonTab}
-            onClose={() => setComingSoonTab(null)}
+            onClose={handleCloseComingSoon}
           />
 
           {/* Floating Table Order Bar - Shown ONLY in Menu Bar Page */}
           {activeNavTab === 'menu' && (
             <MenuOrderBottomBar
               allMenuItems={menuItems}
-              onSelectDish={(item) => setSelectedFoodItem(item)}
-              onNavigateToProfileOrders={() => setActiveNavTab('profile')}
+              onSelectDish={(item) => handleOpenFoodDetail(item)}
+              onNavigateToProfileOrders={() => handleBottomTabSelect('profile')}
+              onOpenOrderModal={handleOpenOrderModal}
             />
           )}
+
+          {/* Centralized Item Added Toast Notification System */}
+          <OrderToast onOpenOrderDrawer={handleOpenOrderModal} />
+
+          {/* Centralized Full-Screen Table Dining Order Modal */}
+          <FullScreenOrderModal
+            isOpen={isOrderModalOpen}
+            onClose={handleCloseOrderModal}
+            allMenuItems={menuItems}
+            onSelectDish={(item) => handleOpenFoodDetail(item)}
+            onNavigateToProfileOrders={() => {
+              handleCloseOrderModal();
+              handleBottomTabSelect('profile');
+            }}
+          />
+
+          {/* Customer Firebase Authentication & Profile Modal */}
+          <CustomerAuthModal
+            isOpen={isAuthModalOpen}
+            onClose={() => setIsAuthModalOpen(false)}
+            currentUser={currentUser}
+            favoritesCount={favoriteDishIds.length}
+            onViewFavorites={() => {
+              setIsAuthModalOpen(false);
+              handleBottomTabSelect('profile');
+            }}
+            onViewOrders={() => {
+              setIsAuthModalOpen(false);
+              handleBottomTabSelect('profile');
+            }}
+          />
 
           {/* Fixed Mobile Bottom Navigation */}
           <BottomNavigation

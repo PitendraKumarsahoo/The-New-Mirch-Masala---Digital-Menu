@@ -34,18 +34,38 @@ export const PortionSelectionModal: React.FC<PortionSelectionModalProps> = ({
 }) => {
   const { addDish, decrement, getPortions } = useTableOrder();
 
-  // ESC key to close
+  // ESC key and Mobile Back Swipe handling to dismiss cleanly
   useEffect(() => {
+    if (!isOpen) return;
+
+    if (typeof window !== 'undefined') {
+      window.history.pushState({ modal: 'portion-modal' }, '');
+    }
+
+    let isClosedByPop = false;
+
+    const handlePopState = () => {
+      isClosedByPop = true;
+      onClose();
+    };
+
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.stopPropagation();
         onClose();
       }
     };
-    if (isOpen) {
-      window.addEventListener('keydown', handleKeyDown);
-    }
-    return () => window.removeEventListener('keydown', handleKeyDown);
+
+    window.addEventListener('popstate', handlePopState);
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+      window.removeEventListener('keydown', handleKeyDown);
+      if (!isClosedByPop && typeof window !== 'undefined' && window.history.state?.modal === 'portion-modal') {
+        window.history.back();
+      }
+    };
   }, [isOpen, onClose]);
 
   if (!isOpen || !item) return null;

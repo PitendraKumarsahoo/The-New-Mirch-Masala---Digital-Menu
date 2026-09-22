@@ -1,4 +1,3 @@
-import { API_BASE_URL } from '../../config/api';
 import {
   AdminDashboardStats,
   AdminMenuItem,
@@ -12,6 +11,10 @@ import {
 import { MENU_ITEMS, RESTAURANT_INFO } from '../../data/menuData';
 import { getStoredAuthToken } from './adminAuthService';
 import { AuditLogEntry } from '../types/auth';
+import {
+  updateMenuItemInFirestore,
+  updateRestaurantSettingsInFirestore,
+} from '../../services/firebaseDbService';
 
 const RESTAURANT_ID = 'mirch-masala-01';
 
@@ -211,6 +214,11 @@ export async function createMenuItem(
   state.menu.unshift(newItem);
   saveLocalState(state);
 
+  // Sync to Cloud Firestore
+  updateMenuItemInFirestore(newId, newItem).catch((err) =>
+    console.warn('[AdminService] Firestore menu create note:', err)
+  );
+
   return { success: true, item: newItem };
 }
 
@@ -224,6 +232,12 @@ export async function updateMenuItem(
     state.menu[idx] = item;
     saveLocalState(state);
   }
+
+  // Sync to Cloud Firestore
+  updateMenuItemInFirestore(item.id, item).catch((err) =>
+    console.warn('[AdminService] Firestore menu update note:', err)
+  );
+
   return { success: true };
 }
 
@@ -700,6 +714,11 @@ export async function updateAdminRestaurantSettings(
   const state = getLocalState();
   state.settings = { ...settings };
   saveLocalState(state);
+
+  // Sync to Cloud Firestore
+  updateRestaurantSettingsInFirestore(settings).catch((err) =>
+    console.warn('[AdminService] Firestore settings sync note:', err)
+  );
 
   return { success: true };
 }

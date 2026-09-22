@@ -1,6 +1,11 @@
 import { Customer, Visit, LoyaltyStatus, RewardTier, RewardRedemption } from '../types';
-import { API_BASE_URL } from '../config/api';
 import { LOYALTY_CONFIG, REWARD_TIERS } from '../config/loyaltyConfig';
+import {
+  lookupCustomerInFirestore,
+  saveCustomerToFirestore,
+  recordVerifiedVisitInFirestore,
+  fetchCustomerVisitsFromFirestore,
+} from './firebaseDbService';
 
 const LOCAL_SESSION_KEY = 'mirch_customer_session_v1';
 const LOCAL_STORE_KEY = 'mirch_loyalty_local_db_v2';
@@ -384,61 +389,45 @@ export async function registerCustomer(
     return { success: false, error: 'Please set a secure password (minimum 4 characters).' };
   }
 
-  // 1. Try remote Apps Script API
+  // 1. Check and save to Cloud Firestore
   try {
-    const url = `${API_BASE_URL}?action=registerCustomer`;
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'text/plain;charset=utf-8',
-      },
-      body: JSON.stringify({
-        name: trimmedName,
-        phone,
+    const cloudCust = await lookupCustomerInFirestore(phone);
+    if (cloudCust) {
+      saveCustomerSession({
+        customerId: cloudCust.customerId,
+        phone: cloudCust.phone,
+        name: cloudCust.name,
+        restaurantId: cloudCust.restaurantId || restaurantId,
+      });
+
+      // Sync into local DB for instant offline/preview resilience
+      const db = getLocalDB();
+      const existingIdx = db.customers.findIndex(
+        (c) => c.phone === phone || c.customerId === cloudCust.customerId
+      );
+      const storedCustomer: Customer = {
+        ...cloudCust,
+        mobile: cloudCust.mobile || phone,
+        phone: cloudCust.phone || phone,
+        isActive: true,
         password: cleanPassword,
-        restaurantId,
-      }),
-    });
-
-    if (response.ok) {
-      const data = await response.json();
-      if (data && data.success && data.customer) {
-        saveCustomerSession({
-          customerId: data.customer.customerId,
-          phone: data.customer.phone,
-          name: data.customer.name,
-          restaurantId: data.customer.restaurantId || restaurantId,
-        });
-
-        // Sync into local DB for instant offline/preview resilience
-        const db = getLocalDB();
-        const existingIdx = db.customers.findIndex(
-          (c) => c.phone === phone || c.customerId === data.customer.customerId
-        );
-        const storedCustomer: Customer = {
-          ...data.customer,
-          mobile: data.customer.mobile || phone,
-          phone: data.customer.phone || phone,
-          isActive: true,
-          password: cleanPassword,
-        };
-        if (existingIdx >= 0) {
-          db.customers[existingIdx] = storedCustomer;
-        } else {
-          db.customers.push(storedCustomer);
-        }
-        saveLocalDB(db);
-
-        return {
-          success: true,
-          customer: storedCustomer,
-          loyalty: data.loyalty || computeLoyaltyObject(storedCustomer, []),
-          isNew: data.isNew,
-        };
+      };
+      if (existingIdx >= 0) {
+        db.customers[existingIdx] = storedCustomer;
+      } else {
+        db.customers.push(storedCustomer);
       }
+      saveLocalDB(db);
+
+      return {
+        success: true,
+        customer: storedCustomer,
+        loyalty: computeLoyaltyObject(storedCustomer, []),
+        isNew: false,
+      };
     }
-  } catch {
-    // Network or offline: seamlessly proceed with local database
+  } catch (err) {
+    console.warn('[LoyaltyService] Firestore check notice:', err);
   }
 
   // 2. Resilient local fallback
@@ -475,6 +464,11 @@ export async function registerCustomer(
     customer.isActive = true;
   }
   saveLocalDB(db);
+
+  // Synchronize customer profile to Cloud Firestore
+  saveCustomerToFirestore(customer).catch((err) =>
+    console.warn('[LoyaltyService] Firestore customer sync note:', err)
+  );
 
   saveCustomerSession({
     customerId: customer.customerId,
@@ -567,45 +561,29 @@ export async function getLoyaltyStatus(
 ): Promise<{ success: boolean; customer?: Customer; loyalty?: LoyaltyStatus; recentVisits?: Visit[]; error?: string }> {
   const phone = rawPhone ? normalizePhoneNumber(rawPhone) : '';
 
-  // 1. Try remote API
-  if (customerId || phone) {
+  // 1. Try Cloud Firestore lookup
+  if (phone) {
     try {
-      const url = `${API_BASE_URL}?action=getCustomerLoyalty`;
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'text/plain;charset=utf-8',
-        },
-        body: JSON.stringify({
-          action: 'getCustomerLoyalty',
-          customerId,
-          phone,
-          restaurantId,
-        }),
-      });
+      const cloudCust = await lookupCustomerInFirestore(phone);
+      if (cloudCust) {
+        const db = getLocalDB();
+        const localCust = db.customers.find(
+          (c) => c.customerId === cloudCust.customerId || c.phone === cloudCust.phone
+        );
+        const fullCustomer: Customer = {
+          ...cloudCust,
+          password: localCust?.password || cloudCust.password,
+          redeemedRewardIds: localCust?.redeemedRewardIds || [],
+        };
+        const visits = await fetchCustomerVisitsFromFirestore(phone);
+        const loyalty = computeLoyaltyObject(fullCustomer, visits.length > 0 ? visits : db.visits.filter(v => v.customerId === fullCustomer.customerId));
 
-      if (response.ok) {
-        const data = await response.json();
-        if (data && data.success && data.customer) {
-          const db = getLocalDB();
-          const localCust = db.customers.find(
-            (c) => c.customerId === data.customer.customerId || c.phone === data.customer.phone
-          );
-          const fullCustomer: Customer = {
-            ...data.customer,
-            password: localCust?.password || data.customer.password,
-            redeemedRewardIds: localCust?.redeemedRewardIds || [],
-          };
-          const visits = (data.recentVisits || []).length > 0 ? data.recentVisits : db.visits.filter(v => v.customerId === fullCustomer.customerId);
-          const loyalty = computeLoyaltyObject(fullCustomer, visits);
-
-          return {
-            success: true,
-            customer: fullCustomer,
-            loyalty,
-            recentVisits: visits.slice(0, 5),
-          };
-        }
+        return {
+          success: true,
+          customer: fullCustomer,
+          loyalty,
+          recentVisits: visits.slice(0, 5),
+        };
       }
     } catch {
       // Fallback to local DB
@@ -650,40 +628,24 @@ export async function searchCustomerForStaff(
     return { success: false, error: 'Please enter a valid 10-digit mobile number.' };
   }
 
-  // 1. Try remote API
+  // 1. Try Cloud Firestore lookup
   try {
-    const url = `${API_BASE_URL}?action=searchCustomer`;
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'text/plain;charset=utf-8',
-      },
-      body: JSON.stringify({
-        action: 'searchCustomer',
-        phone,
-        restaurantId,
-      }),
-    });
-    if (response.ok) {
-      const data = await response.json();
-      if (data && data.success && data.customer) {
-        const db = getLocalDB();
-        const localCust = db.customers.find((c) => c.phone === phone);
-        const fullCustomer: Customer = {
-          ...data.customer,
-          redeemedRewardIds: localCust?.redeemedRewardIds || [],
-        };
-        const visits = data.recentVisits || [];
-        const loyalty = computeLoyaltyObject(fullCustomer, visits);
-        return {
-          success: true,
-          customer: fullCustomer,
-          loyalty,
-          recentVisits: visits,
-        };
-      } else if (data && data.error) {
-        return { success: false, error: data.error };
-      }
+    const cloudCust = await lookupCustomerInFirestore(phone);
+    if (cloudCust) {
+      const db = getLocalDB();
+      const localCust = db.customers.find((c) => c.phone === phone);
+      const fullCustomer: Customer = {
+        ...cloudCust,
+        redeemedRewardIds: localCust?.redeemedRewardIds || [],
+      };
+      const visits = await fetchCustomerVisitsFromFirestore(phone);
+      const loyalty = computeLoyaltyObject(fullCustomer, visits);
+      return {
+        success: true,
+        customer: fullCustomer,
+        loyalty,
+        recentVisits: visits,
+      };
     }
   } catch {
     // Continue to local lookup
@@ -816,6 +778,19 @@ export async function verifyCustomerVisit(
   customer.lastVisitAt = `${todayStr} ${timeStr}`;
 
   saveLocalDB(db);
+
+  // Synchronize verified visit and strike to Cloud Firestore
+  recordVerifiedVisitInFirestore({
+    visitId: newVisit.visitId,
+    customerId: newVisit.customerId,
+    customerName: customer.name,
+    phone: customer.phone,
+    restaurantId: newVisit.restaurantId,
+    visitDate: newVisit.visitDate,
+    visitTime: newVisit.visitTime,
+    verifiedBy: newVisit.verifiedBy,
+    status: 'VERIFIED',
+  }).catch((err) => console.warn('[LoyaltyService] Firestore visit sync note:', err));
 
   const customerVisits = db.visits.filter((v) => v.customerId === customerId);
   const loyalty = computeLoyaltyObject(customer, customerVisits);

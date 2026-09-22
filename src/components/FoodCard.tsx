@@ -58,24 +58,25 @@ export function FoodCard({ item, onSelect }: FoodCardProps) {
   };
 
   return (
-    <article
-      id={`food-card-${item.id}`}
-      role="button"
-      tabIndex={0}
-      aria-label={`View details for ${item.name}, ${priceDisplay}`}
-      onClick={() => onSelect(item)}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          onSelect(item);
-        }
-      }}
-      className={`group relative bg-white rounded-2xl p-3 border transition-all duration-250 cursor-pointer active:scale-[0.99] select-none shadow-frosted-card hover:shadow-frosted-card-hover hover:border-orange-200/70 focus:outline-hidden focus:ring-2 focus:ring-orange-500/50 ${
-        item.isAvailable
-          ? 'border-slate-100/90'
-          : 'border-slate-100/80 opacity-75 grayscale-[0.4]'
-      }`}
-    >
+    <>
+      <article
+        id={`food-card-${item.id}`}
+        role="button"
+        tabIndex={0}
+        aria-label={`View details for ${item.name}, ${priceDisplay}`}
+        onClick={() => onSelect(item)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            onSelect(item);
+          }
+        }}
+        className={`group relative bg-white rounded-2xl p-3 border transition-all duration-250 cursor-pointer active:scale-[0.99] select-none shadow-frosted-card hover:shadow-frosted-card-hover hover:border-orange-200/70 focus:outline-hidden focus:ring-2 focus:ring-orange-500/50 ${
+          item.isAvailable
+            ? 'border-slate-100/90'
+            : 'border-slate-100/80 opacity-75 grayscale-[0.4]'
+        }`}
+      >
       <div className="flex items-center gap-3">
         {/* Thumbnail Image */}
         <div className="relative w-18 h-18 sm:w-20 sm:h-20 shrink-0 rounded-xl overflow-hidden bg-slate-100 shadow-[0_2px_8px_rgba(15,23,42,0.03)] border border-slate-100/60">
@@ -237,15 +238,16 @@ export function FoodCard({ item, onSelect }: FoodCardProps) {
           </div>
         </div>
       </div>
-
-      {/* Portion Selection Modal for Half/Full options */}
-      {isDual && (
-        <PortionSelectionModal
-          item={item}
-          isOpen={isPortionModalOpen}
-          onClose={() => setIsPortionModalOpen(false)}
-        />
-      )}
     </article>
+
+    {/* Portion Selection Modal for Half/Full options rendered outside article */}
+    {isDual && isPortionModalOpen && (
+      <PortionSelectionModal
+        item={item}
+        isOpen={isPortionModalOpen}
+        onClose={() => setIsPortionModalOpen(false)}
+      />
+    )}
+  </>
   );
 }

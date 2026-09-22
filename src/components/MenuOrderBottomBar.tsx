@@ -19,7 +19,7 @@ import {
 } from '../services/orderHistoryService';
 import { OrderStatusTracker } from './OrderStatusTracker';
 import { LiveOrderStatusModal } from './orders/LiveOrderStatusModal';
-import { OrderToast } from './orders/OrderToast';
+import { FullScreenOrderModal } from './orders/FullScreenOrderModal';
 import { SPICE_LEVEL_CONFIG } from '../types/profile';
 import { ImageWithFallback } from './ImageWithFallback';
 import { VegBadge } from './VegBadge';
@@ -46,12 +46,14 @@ interface MenuOrderBottomBarProps {
   allMenuItems: MenuItem[];
   onSelectDish?: (item: MenuItem) => void;
   onNavigateToProfileOrders?: () => void;
+  onOpenOrderModal?: () => void;
 }
 
 export const MenuOrderBottomBar: React.FC<MenuOrderBottomBarProps> = ({
   allMenuItems,
   onSelectDish,
   onNavigateToProfileOrders,
+  onOpenOrderModal,
 }) => {
   const {
     orderItems,
@@ -501,7 +503,13 @@ export const MenuOrderBottomBar: React.FC<MenuOrderBottomBarProps> = ({
         {/* Small, Elegant Circular Floating Table Order Button */}
         <motion.button
           type="button"
-          onClick={() => setIsOpen(true)}
+          onClick={() => {
+            if (onOpenOrderModal) {
+              onOpenOrderModal();
+            } else {
+              setIsOpen(true);
+            }
+          }}
           id="menu-floating-circular-order-btn"
           whileTap={{ scale: 0.92 }}
           whileHover={{ scale: 1.06 }}
@@ -564,9 +572,9 @@ export const MenuOrderBottomBar: React.FC<MenuOrderBottomBarProps> = ({
         </motion.button>
       </div>
 
-      {/* Expanded Full-height / Partial-screen Overlay Drawer (Opens on Click) */}
+      {/* Legacy bottom drawer replaced by FullScreenOrderModal */}
       <AnimatePresence>
-        {isOpen && (
+        {false && isOpen && (
           <div
             role="dialog"
             aria-modal="true"
@@ -939,8 +947,16 @@ export const MenuOrderBottomBar: React.FC<MenuOrderBottomBarProps> = ({
         onViewPastOrders={onNavigateToProfileOrders}
       />
 
-      {/* Item Added Toast Notification */}
-      <OrderToast onOpenOrderDrawer={() => setIsOpen(true)} />
+      {/* Full-Screen Table Dining Order Modal (fallback if not handled by parent App.tsx) */}
+      {!onOpenOrderModal && (
+        <FullScreenOrderModal
+          isOpen={isOpen}
+          onClose={() => setIsOpen(false)}
+          allMenuItems={allMenuItems}
+          onSelectDish={onSelectDish}
+          onNavigateToProfileOrders={onNavigateToProfileOrders}
+        />
+      )}
     </>
   );
 };

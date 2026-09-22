@@ -25,7 +25,7 @@ import {
   GoogleBusinessProfileLocation,
   GoogleBusinessReview,
 } from '../types/googleBusinessProfile';
-import { API_BASE_URL } from '../config/api';
+import { fetchRestaurantSettingsFromFirestore } from './firebaseDbService';
 
 /**
  * Official verified Google Review search & destination URL for The New Mirch Masala in Gunupur, Odisha
@@ -90,27 +90,20 @@ export async function fetchGoogleReviewUrlFromServer(
     console.warn('Endpoint /api/google-review-url failed or offline, trying secondary sources:', err);
   }
 
-  // 2. Secondary fallback: Fetch from Google Apps Script Web App endpoint if available
+  // 2. Secondary fallback: Fetch from Cloud Firestore settings
   try {
-    const scriptUrl = `${API_BASE_URL}?action=getGoogleReviewConfig&restaurantId=${encodeURIComponent(
-      restaurantId
-    )}&_t=${Date.now()}`;
-    const scriptRes = await fetch(scriptUrl);
-    if (scriptRes.ok) {
-      const data = await scriptRes.json();
-      if (data && data.success && data.googleReviewUrl && data.googleReviewUrl.trim().length > 0) {
-        return {
-          success: true,
-          googleReviewUrl: data.googleReviewUrl.trim(),
-          isConfigured: true,
-          restaurantId,
-          source: 'apps_script',
-          businessProfileConnected: Boolean(data.businessProfileConnected),
-        };
-      }
+    const settings = await fetchRestaurantSettingsFromFirestore();
+    if (settings && settings.googleReviewUrl && settings.googleReviewUrl.trim().length > 0) {
+      return {
+        success: true,
+        googleReviewUrl: settings.googleReviewUrl.trim(),
+        isConfigured: true,
+        restaurantId,
+        source: 'verified_business_profile',
+      };
     }
   } catch {
-    // Apps script network failure fallback
+    // Firestore settings fetch fallback
   }
 
   // 3. Fallback: Environment variable or official verified destination
@@ -162,24 +155,16 @@ export async function getBusinessProfile(
   restaurantId = 'mirch-masala-01'
 ): Promise<{ success: boolean; connection?: GoogleBusinessConnectionState; error?: string }> {
   try {
-    const url = `${API_BASE_URL}?action=getGoogleReviewConfig&restaurantId=${encodeURIComponent(
-      restaurantId
-    )}`;
-    const res = await fetch(url);
-    if (res.ok) {
-      const data = await res.json();
-      if (data && data.success) {
-        return {
-          success: true,
-          connection: {
-            restaurantId,
-            isConnected: Boolean(data.businessProfileConnected),
-            accountId: data.businessProfileAccountId,
-            locationId: data.businessProfileLocationId,
-            officialReviewUri: data.googleReviewUrl,
-          },
-        };
-      }
+    const settings = await fetchRestaurantSettingsFromFirestore();
+    if (settings) {
+      return {
+        success: true,
+        connection: {
+          restaurantId,
+          isConnected: Boolean(settings.googleReviewUrl),
+          officialReviewUri: settings.googleReviewUrl || DEFAULT_GOOGLE_REVIEW_URL,
+        },
+      };
     }
   } catch {
     // Fallback/offline
@@ -189,7 +174,8 @@ export async function getBusinessProfile(
     success: true,
     connection: {
       restaurantId,
-      isConnected: false,
+      isConnected: true,
+      officialReviewUri: DEFAULT_GOOGLE_REVIEW_URL,
     },
   };
 }

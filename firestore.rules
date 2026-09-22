@@ -1,0 +1,54 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Authenticated customer profiles & saved favorites
+    match /users/{userId} {
+      allow read, write: if true;
+    }
+
+    // Menu items: public read, allow updates/management
+    match /menuItems/{document=**} {
+      allow read, write: if true;
+    }
+
+    // Customer orders
+    match /orders/{document=**} {
+      allow read, write: if true;
+    }
+
+    // Customer profiles & loyalty
+    match /customers/{document=**} {
+      allow read, write: if true;
+    }
+
+    // Verified visits
+    match /visits/{document=**} {
+      allow read, write: if true;
+    }
+
+    // Loyalty rewards
+    match /rewards/{document=**} {
+      allow read, write: if true;
+    }
+
+    // Reward redemptions
+    match /redemptions/{document=**} {
+      allow read, write: if true;
+    }
+
+    // Customer reviews
+    match /reviews/{document=**} {
+      allow read, write: if true;
+    }
+
+    // Restaurant settings & metadata
+    match /restaurantSettings/{document=**} {
+      allow read, write: if true;
+    }
+
+    // Default fallback
+    match /{document=**} {
+      allow read, write: if true;
+    }
+  }
+}

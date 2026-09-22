@@ -1,5 +1,11 @@
 import { useState, useEffect, useCallback } from 'react';
 import { MenuItem } from '../types';
+import {
+  saveOrderToFirestore,
+  updateOrderStatusInFirestore,
+  subscribeToOrders,
+} from './firebaseDbService';
+import { auth } from '../config/firebase';
 
 export type OrderStatus = 'received' | 'preparing' | 'ready' | 'completed' | 'cancelled';
 
@@ -24,6 +30,7 @@ export interface PlacedOrder {
   orderId: string;
   customerId?: string;
   customerName?: string;
+  customerEmail?: string;
   customerPhone?: string;
   tableNumber: string;
   createdAt: string;
@@ -191,6 +198,7 @@ export interface CreateOrderInput {
   channel?: 'website' | 'whatsapp';
   customerId?: string;
   customerName?: string;
+  customerEmail?: string;
   customerPhone?: string;
 }
 
@@ -202,6 +210,15 @@ export function createPlacedOrder(input: CreateOrderInput): PlacedOrder {
   const now = new Date().toISOString();
   const orderNumber = Math.floor(1000 + Math.random() * 9000);
   const orderId = `MM-${orderNumber}`;
+
+  const currentUser = auth.currentUser;
+  const customerId = input.customerId || currentUser?.uid;
+  const customerName =
+    input.customerName ||
+    currentUser?.displayName ||
+    (currentUser?.email ? currentUser.email.split('@')[0] : undefined);
+  const customerEmail = input.customerEmail || currentUser?.email || undefined;
+  const customerPhone = input.customerPhone || currentUser?.phoneNumber || undefined;
 
   const totalPortions = input.items.reduce((acc, item) => acc + item.quantity, 0);
 
@@ -219,9 +236,10 @@ export function createPlacedOrder(input: CreateOrderInput): PlacedOrder {
     spiceLevel: input.spiceLevel || 'medium',
     specialInstructions: input.specialInstructions || '',
     channel: input.channel || 'website',
-    customerId: input.customerId,
-    customerName: input.customerName,
-    customerPhone: input.customerPhone,
+    customerId,
+    customerName,
+    customerEmail,
+    customerPhone,
     timeline: [
       {
         status: 'received',
@@ -234,6 +252,12 @@ export function createPlacedOrder(input: CreateOrderInput): PlacedOrder {
 
   const updatedOrders = [newOrder, ...currentOrders];
   savePlacedOrders(updatedOrders);
+
+  // Asynchronously synchronize to Cloud Firestore
+  saveOrderToFirestore(newOrder).catch((err) =>
+    console.warn('[OrderHistoryService] Firestore cloud sync note:', err)
+  );
+
   return newOrder;
 }
 
@@ -277,6 +301,11 @@ export function updateOrderStatus(
   const updatedList = [...currentOrders];
   updatedList[orderIndex] = updatedOrder;
   savePlacedOrders(updatedList);
+
+  // Synchronize status update to Cloud Firestore
+  updateOrderStatusInFirestore(orderId, newStatus).catch((err) =>
+    console.warn('[OrderHistoryService] Firestore status sync note:', err)
+  );
 
   return updatedOrder;
 }
@@ -330,17 +359,30 @@ export function getMostRecentActiveOrder(): PlacedOrder | null {
 }
 
 /**
- * React Hook for placed orders with cross-tab and event synchronization
+ * React Hook for placed orders with Firestore cloud synchronization and cross-tab event synchronization
  */
-export function usePlacedOrders() {
+export function usePlacedOrders(filterCustomerId?: string) {
   const [orders, setOrders] = useState<PlacedOrder[]>(getPlacedOrders);
+  const [isCloudConnected, setIsCloudConnected] = useState(false);
 
   const refreshOrders = useCallback(() => {
     setOrders(getPlacedOrders());
   }, []);
 
   useEffect(() => {
+    // 1. Initial hydrate from local storage
     refreshOrders();
+
+    // 2. Real-time subscription to Cloud Firestore orders collection
+    const unsubscribeFirestore = subscribeToOrders((firestoreOrders) => {
+      if (firestoreOrders) {
+        setIsCloudConnected(true);
+        if (firestoreOrders.length > 0) {
+          setOrders(firestoreOrders);
+          savePlacedOrders(firestoreOrders);
+        }
+      }
+    });
 
     const handleCustomEvent = () => refreshOrders();
     const handleStorageEvent = (e: StorageEvent) => {
@@ -359,21 +401,35 @@ export function usePlacedOrders() {
     window.addEventListener('visibilitychange', handleVisibility);
 
     return () => {
+      if (typeof unsubscribeFirestore === 'function') {
+        unsubscribeFirestore();
+      }
       window.removeEventListener(EVENT_ORDERS_UPDATED, handleCustomEvent);
       window.removeEventListener('storage', handleStorageEvent);
       window.removeEventListener('visibilitychange', handleVisibility);
     };
   }, [refreshOrders]);
 
-  const activeOrders = orders.filter(
+  // Optional customer filter
+  const displayOrders = filterCustomerId
+    ? orders.filter(
+        (o) =>
+          o.customerId === filterCustomerId ||
+          (auth.currentUser?.email && o.customerEmail === auth.currentUser.email)
+      )
+    : orders;
+
+  const activeOrders = displayOrders.filter(
     (o) => o.status === 'received' || o.status === 'preparing' || o.status === 'ready'
   );
-  const completedOrders = orders.filter((o) => o.status === 'completed');
+  const completedOrders = displayOrders.filter((o) => o.status === 'completed');
 
   return {
-    orders,
+    orders: displayOrders,
+    allOrders: orders,
     activeOrders,
     completedOrders,
+    isCloudConnected,
     createOrder: createPlacedOrder,
     updateStatus: updateOrderStatus,
     advanceStep: advanceOrderToNextStep,

@@ -1,6 +1,7 @@
-import { MapPin, Clock, Star, ShieldCheck } from 'lucide-react';
+import { MapPin, Clock, Star, ShieldCheck, User as UserIcon } from 'lucide-react';
 import { RESTAURANT_INFO } from '../data/menuData';
 import { RestaurantInfo } from '../types';
+import { User } from 'firebase/auth';
 
 export type SyncConnectionStatus = 'fresh' | 'cached' | 'fallback' | 'offline';
 
@@ -12,6 +13,8 @@ interface RestaurantHeaderProps {
   activeCategory?: string;
   totalItemsCount?: number;
   dataSource?: string;
+  currentUser?: User | null;
+  onOpenAuthModal?: () => void;
 }
 
 export function RestaurantHeader({
@@ -19,6 +22,8 @@ export function RestaurantHeader({
   onSelectReview,
   restaurant = RESTAURANT_INFO,
   connectionStatus = 'fresh',
+  currentUser,
+  onOpenAuthModal,
 }: RestaurantHeaderProps) {
   return (
     <header className="w-full px-5 sm:px-6 pt-7 pb-4 bg-white border-b border-slate-100 relative">
@@ -57,6 +62,36 @@ export function RestaurantHeader({
               <span>Rate</span>
             </button>
           )}
+
+          {/* Customer Profile / Firebase Auth Button */}
+          {onOpenAuthModal && (
+            <button
+              type="button"
+              id="header-customer-auth-btn"
+              onClick={onOpenAuthModal}
+              className={`px-2.5 py-1 text-[10px] font-bold rounded-full border uppercase tracking-wider flex items-center gap-1.5 transition-all cursor-pointer shadow-2xs ${
+                currentUser
+                  ? 'bg-orange-50 hover:bg-orange-100 text-orange-800 border-orange-200'
+                  : 'bg-stone-50 hover:bg-stone-100 text-stone-700 border-stone-200'
+              }`}
+              title={currentUser ? `Signed in as ${currentUser.displayName || currentUser.email}` : 'Sign In'}
+            >
+              {currentUser?.photoURL ? (
+                <img
+                  src={currentUser.photoURL}
+                  alt=""
+                  className="w-3.5 h-3.5 rounded-full object-cover"
+                  referrerPolicy="no-referrer"
+                />
+              ) : (
+                <UserIcon className="w-3 h-3 text-orange-600" />
+              )}
+              <span className="max-w-[80px] sm:max-w-[110px] truncate">
+                {currentUser ? (currentUser.displayName?.split(' ')[0] || 'Account') : 'Sign In'}
+              </span>
+            </button>
+          )}
+
           <div className="px-3 py-1 bg-green-50 text-green-600 text-[10px] font-bold rounded-full border border-green-100 uppercase tracking-wider flex items-center gap-1.5 shadow-2xs">
             <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
             <span>{restaurant.isOpen !== false ? 'Open Now' : 'Closed'}</span>

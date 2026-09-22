@@ -1,0 +1,128 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "Authenticated customer profile and saved favorites",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "User unique identifier from Firebase Auth" },
+        "email": { "type": "string", "description": "Customer email address" },
+        "displayName": { "type": "string", "description": "Customer display name" },
+        "phone": { "type": "string", "description": "Customer contact number" },
+        "photoURL": { "type": "string", "description": "User profile photo avatar" },
+        "favoriteDishIds": { "type": "array", "description": "List of favorite dish IDs" },
+        "preferredSpiceLevel": { "type": "string", "description": "Default spice level preference" },
+        "dietaryPreference": { "type": "string", "description": "Dietary preference" },
+        "createdAt": { "type": "string", "description": "Account creation timestamp" },
+        "updatedAt": { "type": "string", "description": "Last updated timestamp" }
+      },
+      "required": ["uid"]
+    },
+    "MenuItem": {
+      "title": "MenuItem",
+      "description": "Restaurant menu item",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "category": { "type": "string" },
+        "subCategory": { "type": "string" },
+        "price": { "type": "number" },
+        "secondaryPrice": { "type": "number" },
+        "description": { "type": "string" },
+        "image": { "type": "string" },
+        "isVeg": { "type": "boolean" },
+        "isAvailable": { "type": "boolean" },
+        "isPopular": { "type": "boolean" }
+      },
+      "required": ["id", "name", "category", "isVeg"]
+    },
+    "Order": {
+      "title": "Order",
+      "description": "Customer dine-in or digital order",
+      "type": "object",
+      "properties": {
+        "orderId": { "type": "string" },
+        "customerId": { "type": "string" },
+        "customerName": { "type": "string" },
+        "customerEmail": { "type": "string" },
+        "customerPhone": { "type": "string" },
+        "tableNumber": { "type": "string" },
+        "status": { "type": "string", "enum": ["received", "preparing", "ready", "completed", "cancelled"] },
+        "items": { "type": "array" },
+        "totalPortionsCount": { "type": "number" },
+        "subtotalPrice": { "type": "number" },
+        "grandTotalPrice": { "type": "number" },
+        "spiceLevel": { "type": "string" },
+        "specialInstructions": { "type": "string" },
+        "channel": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "statusUpdatedAt": { "type": "string" }
+      },
+      "required": ["orderId", "tableNumber", "status", "grandTotalPrice", "createdAt"]
+    },
+    "Customer": {
+      "title": "Customer",
+      "description": "Loyalty program customer profile",
+      "type": "object",
+      "properties": {
+        "customerId": { "type": "string" },
+        "name": { "type": "string" },
+        "phone": { "type": "string" },
+        "totalVisits": { "type": "number" },
+        "availableRewards": { "type": "number" }
+      },
+      "required": ["customerId", "name", "phone"]
+    },
+    "Visit": {
+      "title": "Visit",
+      "description": "Verified customer dine-in visit strike",
+      "type": "object",
+      "properties": {
+        "visitId": { "type": "string" },
+        "customerId": { "type": "string" },
+        "visitDate": { "type": "string" },
+        "verifiedBy": { "type": "string" },
+        "status": { "type": "string" }
+      },
+      "required": ["visitId", "customerId", "visitDate", "status"]
+    },
+    "RestaurantSettings": {
+      "title": "RestaurantSettings",
+      "description": "Global restaurant settings, timings, and review links",
+      "type": "object",
+      "properties": {
+        "restaurantId": { "type": "string" },
+        "name": { "type": "string" },
+        "googleReviewUrl": { "type": "string" }
+      },
+      "required": ["restaurantId"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/User" },
+      "description": "User profiles and favorite dishes"
+    },
+    "/menuItems/{itemId}": {
+      "schema": { "$ref": "#/entities/MenuItem" },
+      "description": "Restaurant menu catalog items"
+    },
+    "/orders/{orderId}": {
+      "schema": { "$ref": "#/entities/Order" },
+      "description": "Dine-in and digital customer orders"
+    },
+    "/customers/{customerId}": {
+      "schema": { "$ref": "#/entities/Customer" },
+      "description": "Loyalty program customer records"
+    },
+    "/visits/{visitId}": {
+      "schema": { "$ref": "#/entities/Visit" },
+      "description": "Verified dine-in strikes and visits"
+    },
+    "/restaurantSettings/{restaurantId}": {
+      "schema": { "$ref": "#/entities/RestaurantSettings" },
+      "description": "Restaurant configuration and review URLs"
+    }
+  }
+}

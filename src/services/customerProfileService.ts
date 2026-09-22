@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { CustomerPreferences, SpicePreferenceLevel, DietaryPreference } from '../types/profile';
 import { getCustomerSession } from './loyaltyService';
+import { auth } from '../config/firebase';
+import { saveUserFavoritesToFirestore, getUserFavoritesFromFirestore } from './firebaseAuthService';
 
 const PREFERENCES_STORAGE_KEY = 'mirch_customer_preferences_v2';
 const EVENT_PREFERENCES_UPDATED = 'mirch_preferences_updated';
@@ -88,8 +90,46 @@ export function saveCustomerPreferences(
     window.dispatchEvent(
       new CustomEvent(EVENT_PREFERENCES_UPDATED, { detail: updated })
     );
+
+    // If customer is signed in to Firebase, sync favorites to their cloud profile
+    const currentUid = auth.currentUser?.uid || customerId;
+    if (currentUid && auth.currentUser) {
+      saveUserFavoritesToFirestore(currentUid, updated.favoriteDishIds).catch((err) =>
+        console.warn('[CustomerProfileService] Cloud favorites sync note:', err)
+      );
+    }
   } catch {
     // Ignore quota errors
+  }
+}
+
+/**
+ * Load cloud favorites from Firestore for an authenticated user and merge with local preferences
+ */
+export async function syncFavoritesFromFirestore(uid: string): Promise<string[]> {
+  if (!uid) return [];
+  try {
+    const cloudFavorites = await getUserFavoritesFromFirestore(uid);
+    if (cloudFavorites && cloudFavorites.length > 0) {
+      const current = getCustomerPreferences(uid);
+      const mergedSet = new Set([...current.favoriteDishIds, ...cloudFavorites]);
+      const mergedFavorites = Array.from(mergedSet);
+      const quantities = { ...(current.favoriteQuantities || {}) };
+      for (const id of mergedFavorites) {
+        if (!quantities[id]) quantities[id] = 1;
+      }
+      const updated: CustomerPreferences = {
+        ...current,
+        favoriteDishIds: mergedFavorites,
+        favoriteQuantities: quantities,
+      };
+      saveCustomerPreferences(updated, uid);
+      return mergedFavorites;
+    }
+    return [];
+  } catch (error) {
+    console.warn('[CustomerProfileService] Error syncing cloud favorites:', error);
+    return [];
   }
 }
 
