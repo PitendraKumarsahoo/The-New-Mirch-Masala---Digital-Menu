@@ -143,6 +143,60 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({
           </button>
         </form>
 
+        {/* Quick Test Accounts for Sandbox Testing */}
+        <div className="mt-5 p-3.5 bg-stone-900/90 border border-stone-800 rounded-2xl space-y-2.5">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-bold text-amber-400 uppercase tracking-wider">
+              Quick Test Accounts
+            </span>
+            <span className="text-[10px] text-stone-500 font-medium">Click to Auto-fill</span>
+          </div>
+
+          <div className="grid grid-cols-3 gap-1.5">
+            <button
+              type="button"
+              onClick={() => {
+                setUsername('rajesh@mirchmasala.com');
+                setPassword('mirchowner123');
+                setError(null);
+              }}
+              className="p-2 rounded-xl bg-stone-800 hover:bg-stone-700/80 active:scale-95 border border-stone-700/60 text-left transition-all cursor-pointer"
+            >
+              <div className="text-[10px] font-bold text-amber-400">Owner</div>
+              <div className="text-[11px] font-medium text-stone-200">Rajesh</div>
+              <div className="text-[9px] text-stone-400 truncate">Owner Access</div>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setUsername('vikram@mirchmasala.com');
+                setPassword('mirchmanager123');
+                setError(null);
+              }}
+              className="p-2 rounded-xl bg-stone-800 hover:bg-stone-700/80 active:scale-95 border border-stone-700/60 text-left transition-all cursor-pointer"
+            >
+              <div className="text-[10px] font-bold text-orange-400">Manager</div>
+              <div className="text-[11px] font-medium text-stone-200">Vikram</div>
+              <div className="text-[9px] text-stone-400 truncate">Store Ops</div>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setUsername('pooja@mirchmasala.com');
+                setPassword('mirchstaff123');
+                setError(null);
+              }}
+              className="p-2 rounded-xl bg-stone-800 hover:bg-stone-700/80 active:scale-95 border border-stone-700/60 text-left transition-all cursor-pointer"
+            >
+              <div className="text-[10px] font-bold text-emerald-400">Staff</div>
+              <div className="text-[11px] font-medium text-stone-200">Pooja</div>
+              <div className="text-[9px] text-stone-400 truncate">Front Desk</div>
+            </button>
+          </div>
+        </div>
+
         {/* Security & Access Information */}
         <div className="mt-6 pt-5 border-t border-stone-800/80 text-xs text-stone-400 space-y-2.5">
           <div className="flex items-center gap-2 text-stone-400 text-[11px]">
