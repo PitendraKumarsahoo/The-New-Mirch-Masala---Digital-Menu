@@ -25,7 +25,7 @@ export function SearchBar({
           id="menu-search-input"
           value={searchQuery}
           onChange={(e) => onSearchChange(e.target.value)}
-          placeholder="Search dishes..."
+          placeholder="Search Chicken Biryani, Chowmein, Paneer, Soup..."
           className="w-full h-11 pl-10 pr-10 bg-slate-50 hover:bg-slate-100/70 focus:bg-white text-slate-800 text-sm placeholder:text-slate-400 rounded-2xl border border-slate-200/60 focus:border-orange-500/80 focus:ring-2 focus:ring-orange-500/20 focus:outline-hidden transition-all shadow-2xs"
         />
         {searchQuery && (

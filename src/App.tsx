@@ -43,6 +43,7 @@ export default function App() {
   const [activeNavTab, setActiveNavTab] = useState<BottomNavTab>('menu');
   const [comingSoonTab, setComingSoonTab] = useState<BottomNavTab | null>(null);
   const [isOrderModalOpen, setIsOrderModalOpen] = useState(false);
+  const [layoutMode, setLayoutMode] = useState<'grid' | 'list'>('grid');
 
   // Customer Firebase Authentication & Profile State
   const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
@@ -559,6 +560,17 @@ export default function App() {
                 isFiltering={Boolean(searchQuery.trim())}
               />
 
+              {/* Dietary Filter Bar with Layout Mode Toggle (matches screenshot layout) */}
+              <VegNonVegFilter
+                activeFilter={dietaryFilter}
+                onChange={setDietaryFilter}
+                vegCount={vegCount}
+                nonVegCount={nonVegCount}
+                totalCount={totalCount}
+                layoutMode={layoutMode}
+                onToggleLayout={() => setLayoutMode((prev) => (prev === 'grid' ? 'list' : 'grid'))}
+              />
+
               {/* Horizontal Category Navigation */}
               <CategoryTabs
                 categories={categories}
@@ -572,26 +584,17 @@ export default function App() {
                 categoryItemCounts={categoryCounts}
               />
 
-              {/* Dietary Filter Bar (All / Pure Veg / Non-Veg) */}
-              <VegNonVegFilter
-                activeFilter={dietaryFilter}
-                onChange={setDietaryFilter}
-                vegCount={vegCount}
-                nonVegCount={nonVegCount}
-                totalCount={totalCount}
-              />
-
               {/* Main Dishes Area */}
               <main className="flex-1 pb-24">
-                {/* Popular Today Section (Only visible on All category, when not searching, and when popular items exist) */}
-                {selectedCategory === 'All' && !searchQuery.trim() && dietaryFilter === 'all' && popularItems.length > 0 && (
+                {/* Popular Today Section in List Mode */}
+                {layoutMode === 'list' && selectedCategory === 'All' && !searchQuery.trim() && dietaryFilter === 'all' && popularItems.length > 0 && (
                   <PopularSection
                     popularItems={popularItems}
                     onSelectItem={(item) => handleOpenFoodDetail(item)}
                   />
                 )}
 
-                {/* Menu Dishes List */}
+                {/* Menu Dishes List / Double Photo Grid */}
                 <MenuSection
                   items={filteredItems}
                   selectedCategory={selectedCategory}
@@ -599,6 +602,7 @@ export default function App() {
                   onSelectItem={(item) => handleOpenFoodDetail(item)}
                   onResetSearch={handleResetSearch}
                   isLoading={isCategoryLoading}
+                  layoutMode={layoutMode}
                 />
 
                 {/* Rate Your Experience Banner */}
@@ -656,6 +660,8 @@ export default function App() {
           <FoodDetail
             item={selectedFoodItem}
             onClose={handleCloseFoodDetail}
+            allMenuItems={menuItems}
+            onSelectDish={(item) => handleOpenFoodDetail(item)}
           />
 
           {/* Coming Soon Modal for other tabs */}

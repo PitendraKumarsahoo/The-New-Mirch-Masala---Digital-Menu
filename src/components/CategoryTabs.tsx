@@ -182,13 +182,13 @@ export function CategoryTabs({
                       stiffness: 420,
                       damping: 32,
                     }}
-                    className="absolute inset-0 rounded-full bg-orange-600 shadow-md shadow-orange-600/25 -z-10"
+                    className="absolute inset-0 rounded-full bg-emerald-700 shadow-md shadow-emerald-700/25 -z-10"
                   />
                 )}
 
                 {/* Non-selected border / background */}
                 {!isSelected && (
-                  <div className="absolute inset-0 rounded-full border border-stone-200/80 bg-stone-50/50 -z-10" />
+                  <div className="absolute inset-0 rounded-full border border-stone-200/80 bg-white -z-10" />
                 )}
 
                 {/* Icons */}
@@ -196,15 +196,8 @@ export function CategoryTabs({
                   <Flame
                     className={`w-3.5 h-3.5 shrink-0 ${
                       isSelected
-                        ? 'text-white fill-white'
+                        ? 'text-amber-300 fill-amber-300'
                         : 'text-orange-600 fill-orange-500'
-                    }`}
-                  />
-                )}
-                {cat === 'All' && (
-                  <Sparkles
-                    className={`w-3.5 h-3.5 shrink-0 ${
-                      isSelected ? 'text-orange-200' : 'text-stone-400'
                     }`}
                   />
                 )}

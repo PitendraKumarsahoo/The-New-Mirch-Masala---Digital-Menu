@@ -1,6 +1,6 @@
 import React from 'react';
 import { Flame, ChevronRight, Heart, Plus, Minus } from 'lucide-react';
-import { MenuItem } from '../types';
+import { MenuItem, isMenuItemUnavailable } from '../types';
 import { VegBadge } from './VegBadge';
 import { ImageWithFallback } from './ImageWithFallback';
 import { useCustomerPreferences } from '../services/customerProfileService';
@@ -40,6 +40,8 @@ export function PopularSection({ popularItems, onSelectItem }: PopularSectionPro
         {popularItems.map((item) => {
           const isFav = isFavorite(item.id);
           const qty = getQuantity(item.id);
+          const isUnavailable = isMenuItemUnavailable(item);
+          const isAvailable = !isUnavailable;
 
           const hasSecondary =
             typeof item.secondaryPrice === 'number' &&
@@ -63,7 +65,11 @@ export function PopularSection({ popularItems, onSelectItem }: PopularSectionPro
                 }
               }}
               aria-label={`View details for ${item.name}, ${priceDisplay}`}
-              className="group snap-start shrink-0 min-w-[150px] max-w-[165px] bg-white p-3 rounded-2xl shadow-frosted-card border border-slate-100/90 hover:shadow-frosted-card-hover hover:border-orange-200/70 transition-all duration-250 text-left flex flex-col justify-between active:scale-[0.98] focus:outline-hidden cursor-pointer select-none"
+              className={`group snap-start shrink-0 min-w-[150px] max-w-[165px] bg-white p-3 rounded-2xl shadow-frosted-card border transition-all duration-250 text-left flex flex-col justify-between active:scale-[0.98] focus:outline-hidden cursor-pointer select-none ${
+                isAvailable
+                  ? 'border-slate-100/90 hover:shadow-frosted-card-hover hover:border-orange-200/70'
+                  : 'border-slate-100/80 opacity-75 grayscale-[0.3]'
+              }`}
             >
               <div>
                 {/* Image Container */}
@@ -97,10 +103,10 @@ export function PopularSection({ popularItems, onSelectItem }: PopularSectionPro
                     <Heart className={`w-3.5 h-3.5 ${isFav ? 'fill-white stroke-white' : 'stroke-white'}`} />
                   </button>
 
-                  {!item.isAvailable && (
+                  {isUnavailable && (
                     <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-[1px] flex items-center justify-center">
                       <span className="px-2 py-0.5 bg-slate-100 text-slate-700 font-bold text-[9px] tracking-wider rounded-sm uppercase">
-                        Sold Out
+                        Unavailable
                       </span>
                     </div>
                   )}
@@ -130,7 +136,7 @@ export function PopularSection({ popularItems, onSelectItem }: PopularSectionPro
                   )}
                 </div>
 
-                {item.isAvailable ? (
+                {isAvailable ? (
                   qty > 0 ? (
                     <div
                       className="inline-flex items-center bg-orange-600 text-white rounded-lg shadow-2xs overflow-hidden"
@@ -177,7 +183,7 @@ export function PopularSection({ popularItems, onSelectItem }: PopularSectionPro
                     </button>
                   )
                 ) : (
-                  <span className="text-[9px] text-slate-400 font-medium">Sold Out</span>
+                  <span className="text-[9px] text-slate-400 font-medium">Unavailable</span>
                 )}
               </div>
             </article>

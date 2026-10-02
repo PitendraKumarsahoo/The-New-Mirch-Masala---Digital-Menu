@@ -22,6 +22,7 @@ import { ProfileAccountCard } from './ProfileAccountCard';
 import { CustomerActivityHistory } from './CustomerActivityHistory';
 import { ActivityLog } from './ActivityLog';
 import { PastOrdersTab } from './PastOrdersTab';
+import { OrderHistory } from './OrderHistory';
 import { usePlacedOrders } from '../../services/orderHistoryService';
 import {
   ChevronLeft,
@@ -41,7 +42,7 @@ import {
   Tag,
 } from 'lucide-react';
 
-export { CustomerActivityHistory, ActivityLog, PastOrdersTab };
+export { CustomerActivityHistory, ActivityLog, PastOrdersTab, OrderHistory };
 
 interface CustomerProfilePageProps {
   onBackToMenu: () => void;
@@ -317,9 +318,10 @@ export const CustomerProfilePage: React.FC<CustomerProfilePageProps> = ({
 
         {/* Section Viewports */}
         {activeSection === 'orders' && (
-          <PastOrdersTab
+          <OrderHistory
             onBrowseMenu={onBackToMenu}
             customerId={customer?.customerId}
+            allMenuItems={allMenuItems}
           />
         )}
         {activeSection === 'favorites' && (

@@ -182,7 +182,11 @@ export function normalizeMenuItem(raw: Record<string, unknown>, index: number): 
   const secondaryPrice = normalizeSecondaryPrice(raw.secondaryPrice ?? raw.secondary_price ?? raw.halfPrice);
 
   const isVeg = normalizeBoolean(raw.isVeg ?? raw.veg, false);
-  const isAvailable = normalizeBoolean(raw.isAvailable ?? raw.available, true);
+  const rawStatus = raw.status ? String(raw.status).trim() : undefined;
+  const status = (rawStatus as MenuItem['status']) || undefined;
+  const isAvailable = status === 'out of stock' || status === 'out_of_stock' || status === 'unavailable'
+    ? false
+    : normalizeBoolean(raw.isAvailable ?? raw.available, true);
   const isPopular = normalizeBoolean(raw.isPopular ?? raw.popular, false);
 
   return {
@@ -196,6 +200,7 @@ export function normalizeMenuItem(raw: Record<string, unknown>, index: number): 
     image,
     isVeg,
     isAvailable,
+    status,
     isPopular,
   };
 }

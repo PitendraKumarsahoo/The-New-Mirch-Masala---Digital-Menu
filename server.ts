@@ -3,6 +3,7 @@ import path from 'path';
 import crypto from 'node:crypto';
 import { createServer as createViteServer } from 'vite';
 import dotenv from 'dotenv';
+import { GoogleGenAI } from '@google/genai';
 
 dotenv.config();
 
@@ -1637,6 +1638,70 @@ async function startServer() {
       return res.json({ success: true, logs });
     }
   );
+
+  // --------------------------------------------------------------------
+  // AI-Powered Gemini Complementary Dish Suggestions
+  // --------------------------------------------------------------------
+  app.post('/api/gemini/suggest-similar', async (req: Request, res: Response) => {
+    try {
+      const { dish, menu } = req.body || {};
+      if (!dish || !dish.name) {
+        return res.status(400).json({ success: false, error: 'Dish information is required' });
+      }
+
+      const apiKey = process.env.GEMINI_API_KEY;
+      if (!apiKey) {
+        return res.status(503).json({
+          success: false,
+          error: 'GEMINI_API_KEY not configured on server',
+        });
+      }
+
+      const ai = new GoogleGenAI({ apiKey });
+      const prompt = `You are an authentic Indian culinary sommelier for 'The New Mirch Masala' in Gunupur, Odisha.
+The user is viewing this dish:
+Dish: "${dish.name}" (Category: "${dish.category || 'Special'}", Description: "${dish.description || ''}", Veg: ${dish.isVeg ? 'Vegetarian' : 'Non-Vegetarian'})
+
+From the available restaurant menu items below, choose exactly TWO (2) best complementary or pairing dishes that elevate this dining experience (for example: Naan, Roti, or Tandoori breads to go with a Curry or Butter Masala; Cold Drinks, Raita, or Kebabs to pair with Biryani; Crispy starters or Soup to go with Noodles/Chowmein).
+
+Menu Items:
+${Array.isArray(menu) ? menu.filter((m: any) => m && m.id !== dish.id).slice(0, 35).map((m: any) => `- ID: "${m.id}" | Name: "${m.name}" | Category: "${m.category}" | Price: ₹${m.price}`).join('\n') : ''}
+
+Respond with valid JSON containing exactly two recommendations:
+{
+  "recommendations": [
+    {
+      "dishId": "<valid dish ID from the candidates above>",
+      "dishName": "<exact name>",
+      "pairingReason": "<1-2 sentence culinary explanation of why it pairs deliciously with ${dish.name}>"
+    }
+  ]
+}`;
+
+      const response = await ai.models.generateContent({
+        model: 'gemini-3.8-flash',
+        contents: prompt,
+        config: {
+          responseMimeType: 'application/json',
+          temperature: 0.3,
+        },
+      });
+
+      const responseText = response.text || '';
+      const parsed = JSON.parse(responseText);
+      return res.json({
+        success: true,
+        recommendations: parsed.recommendations || [],
+        source: 'gemini',
+      });
+    } catch (err: any) {
+      console.warn('[Gemini API] suggest-similar warning:', err?.message || err);
+      return res.status(500).json({
+        success: false,
+        error: err?.message || 'Failed to generate recommendations',
+      });
+    }
+  });
 
   // --------------------------------------------------------------------
   // Vite Integration

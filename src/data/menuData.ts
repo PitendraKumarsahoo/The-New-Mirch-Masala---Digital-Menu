@@ -553,6 +553,7 @@ export const MENU_ITEMS: MenuItem[] = [
     image: 'https://images.unsplash.com/photo-1545247181-516773cae754?w=800&auto=format&fit=crop&q=80',
     isVeg: false,
     isAvailable: false, // Demonstrates SOLD OUT requirement
+    status: 'out of stock',
     isPopular: false,
     spicyLevel: 2
   },
@@ -617,6 +618,7 @@ export const MENU_ITEMS: MenuItem[] = [
     image: 'https://images.unsplash.com/photo-1534939561126-855b8675edd7?w=800&auto=format&fit=crop&q=80',
     isVeg: false,
     isAvailable: false, // Demonstrates SOLD OUT requirement
+    status: 'out of stock',
     isPopular: false,
     spicyLevel: 2
   },

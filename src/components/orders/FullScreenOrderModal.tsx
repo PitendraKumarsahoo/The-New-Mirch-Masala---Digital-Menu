@@ -268,20 +268,20 @@ export const FullScreenOrderModal: React.FC<FullScreenOrderModalProps> = ({
 
     const lines = [
       `🍛 *NEW ORDER — ${RESTAURANT_INFO.name}*`,
-      `📍 *Location / Table:* ${selectedTable}`,
+      `📍 *Table Number:* ${selectedTable || 'Table 4'}`,
       `🕒 *Order Time:* ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
       `🌶️ *Spice Level:* ${spiceInfo.label} (${spiceInfo.peppers})`,
       ...(preferences.specialInstructions
         ? [`📝 *Special Request:* ${preferences.specialInstructions}`]
         : []),
       `━━━━━━━━━━━━━━━━━━━━`,
-      `🍽️ *ORDERED ITEMS WITH SIZES:*`,
+      `🍽️ *SELECTED ORDER ITEMS:*`,
       itemsText,
       `━━━━━━━━━━━━━━━━━━━━`,
-      `📦 *Total Items:* ${totalPortionsCount} portions (${orderedItemsList.length} dishes)`,
-      `💳 *Grand Total:* ₹${grandTotalPrice.toLocaleString('en-IN')}`,
+      `📦 *Total Portions:* ${totalPortionsCount} (${orderedItemsList.length} dishes)`,
+      `💰 *TOTAL BILL AMOUNT:* ₹${grandTotalPrice.toLocaleString('en-IN')}`,
       `━━━━━━━━━━━━━━━━━━━━`,
-      `_Sent via The New Mirch Masala Digital Menu. Please confirm our order. Thank you!_`,
+      `_Sent via Digital Table Ordering for ${selectedTable || 'Table 4'}. Please confirm and start preparing. Thank you!_`,
     ];
 
     const message = lines.join('\n');
@@ -329,7 +329,7 @@ export const FullScreenOrderModal: React.FC<FullScreenOrderModalProps> = ({
           currentUser?.displayName ||
           (currentUser?.email ? currentUser.email.split('@')[0] : undefined),
         customerEmail: currentUser?.email || undefined,
-        customerPhone: currentUser?.phoneNumber || preferences.phone || undefined,
+        customerPhone: currentUser?.phoneNumber || undefined,
       });
 
       clear();
@@ -370,7 +370,7 @@ export const FullScreenOrderModal: React.FC<FullScreenOrderModalProps> = ({
         currentUser?.displayName ||
         (currentUser?.email ? currentUser.email.split('@')[0] : undefined),
       customerEmail: currentUser?.email || undefined,
-      customerPhone: currentUser?.phoneNumber || preferences.phone || undefined,
+      customerPhone: currentUser?.phoneNumber || undefined,
     });
 
     clear();
@@ -787,39 +787,39 @@ export const FullScreenOrderModal: React.FC<FullScreenOrderModalProps> = ({
             </div>
           )}
 
-          {/* Transparent Calculation Breakdown Box */}
+          {/* Calculation Breakdown Box */}
           {orderedItemsList.length > 0 && (
-            <div className="bg-stone-50 rounded-2xl p-4 border border-stone-200 space-y-2.5">
-              <div className="flex items-center justify-between pb-1.5 border-b border-stone-200/80">
+            <div className="bg-stone-50 rounded-2xl p-4 border border-stone-200/90 shadow-2xs space-y-3">
+              <div className="flex items-center justify-between pb-2 border-b border-stone-200">
                 <span className="text-xs font-bold text-stone-800 uppercase tracking-wider flex items-center gap-1.5">
-                  <Receipt className="w-3.5 h-3.5 text-orange-600" />
-                  <span>Total Order Calculation</span>
+                  <Receipt className="w-4 h-4 text-emerald-600" />
+                  <span>Bill Details & Order Summary</span>
                 </span>
-                <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200/60">
-                  Zero Tax / No GST
+                <span className="text-[11px] font-bold text-emerald-800 bg-emerald-100/80 px-2.5 py-0.5 rounded-full border border-emerald-300/60">
+                  {selectedTable}
                 </span>
               </div>
 
               <div className="space-y-1.5 text-xs text-stone-600">
                 <div className="flex justify-between items-center">
-                  <span>Dishes & Portions Total ({totalPortionsCount} portions)</span>
+                  <span>Selected Dishes Subtotal ({orderedItemsList.length} items, {totalPortionsCount} portions)</span>
                   <span className="font-bold text-stone-900">
                     ₹{subtotalPrice.toLocaleString('en-IN')}
                   </span>
                 </div>
 
                 <div className="flex justify-between items-center text-[11px] text-stone-500">
-                  <span>GST / Additional Taxes</span>
-                  <span className="text-stone-700 font-bold">₹0.00 (Direct Pricing)</span>
+                  <span>GST & Service Taxes</span>
+                  <span className="text-emerald-700 font-bold">₹0.00 (No Extra Charges)</span>
                 </div>
 
                 {preferences.spiceLevel && (
                   <div className="flex justify-between items-center text-[11px] text-stone-500">
                     <span className="flex items-center gap-1">
                       <Flame className="w-3 h-3 text-orange-500" />
-                      <span>Spice Level Note</span>
+                      <span>Spice Preference</span>
                     </span>
-                    <span className="text-amber-700 font-bold">
+                    <span className="text-amber-800 font-bold">
                       {SPICE_LEVEL_CONFIG[preferences.spiceLevel].label} ({SPICE_LEVEL_CONFIG[preferences.spiceLevel].peppers})
                     </span>
                   </div>
@@ -829,13 +829,13 @@ export const FullScreenOrderModal: React.FC<FullScreenOrderModalProps> = ({
               <div className="pt-2.5 border-t border-stone-200 flex items-baseline justify-between">
                 <div>
                   <span className="text-xs font-black text-stone-900 uppercase tracking-wide block">
-                    Total Amount To Pay
+                    Total Bill Amount
                   </span>
-                  <span className="text-[10px] text-stone-400">
-                    Final bill amount for {selectedTable}
+                  <span className="text-[10px] text-stone-500 font-medium">
+                    Calculated total for {selectedTable}
                   </span>
                 </div>
-                <span className="text-xl sm:text-2xl font-black text-orange-600">
+                <span className="text-2xl font-black text-emerald-700 tracking-tight">
                   ₹{grandTotalPrice.toLocaleString('en-IN')}
                 </span>
               </div>
@@ -845,39 +845,36 @@ export const FullScreenOrderModal: React.FC<FullScreenOrderModalProps> = ({
 
         {/* Footer Actions Strip */}
         {orderedItemsList.length > 0 && (
-          <div className="p-4 sm:p-5 bg-white border-t border-stone-200 shrink-0 space-y-2.5">
-            {/* Primary Action: Place Dine-In Order */}
-            <button
-              type="button"
-              onClick={handlePlaceWebsiteOrder}
-              disabled={isPlacingOrder}
-              id="full-screen-order-btn-place"
-              className="w-full py-3.5 px-4 rounded-xl bg-orange-600 hover:bg-orange-700 active:scale-[0.98] text-white font-black text-sm shadow-md shadow-orange-600/20 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-70"
-            >
-              {isPlacingOrder ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>Connecting to Kitchen (Firestore)...</span>
-                </>
-              ) : (
-                <>
-                  <ChefHat className="w-4 h-4" />
-                  <span>
-                    Place Dine-In Order ({totalPortionsCount} portions • ₹{grandTotalPrice.toLocaleString('en-IN')})
-                  </span>
-                </>
-              )}
-            </button>
+          <div className="p-4 sm:p-5 bg-white border-t border-stone-200 shrink-0 space-y-3">
+            {/* Quick Bill Overview Strip */}
+            <div className="flex items-center justify-between px-3.5 py-2 rounded-xl bg-stone-50 border border-stone-200">
+              <div>
+                <span className="text-[10px] font-bold text-stone-500 uppercase tracking-wider block">
+                  Total Bill • {selectedTable}
+                </span>
+                <span className="text-xs font-medium text-stone-600">
+                  {totalPortionsCount} {totalPortionsCount === 1 ? 'portion' : 'portions'} ({orderedItemsList.length} {orderedItemsList.length === 1 ? 'dish' : 'dishes'})
+                </span>
+              </div>
+              <span className="text-xl sm:text-2xl font-black text-emerald-700 tracking-tight">
+                ₹{grandTotalPrice.toLocaleString('en-IN')}
+              </span>
+            </div>
 
-            {/* Secondary Action: Order via WhatsApp */}
+            {/* Prominent Primary Action: Order via WhatsApp */}
             <button
               type="button"
               onClick={handlePlaceWhatsAppOrder}
               id="full-screen-order-btn-whatsapp"
-              className="w-full py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] text-white font-bold text-xs shadow-xs transition-all flex items-center justify-center gap-2 cursor-pointer"
+              className="w-full py-3.5 px-4 rounded-xl bg-[#25D366] hover:bg-[#20bd5a] active:scale-[0.98] text-white font-black text-sm sm:text-base shadow-lg shadow-emerald-500/25 transition-all flex flex-col items-center justify-center cursor-pointer ring-2 ring-emerald-600/20"
             >
-              <MessageCircle className="w-4 h-4 fill-white text-emerald-600" />
-              <span>Order via WhatsApp & Save to History</span>
+              <div className="flex items-center gap-2">
+                <MessageCircle className="w-5 h-5 fill-white text-[#25D366]" />
+                <span>Order via WhatsApp • ₹{grandTotalPrice.toLocaleString('en-IN')}</span>
+              </div>
+              <span className="text-[11px] font-semibold text-emerald-100 opacity-95">
+                Send pre-filled bill & items for {selectedTable}
+              </span>
             </button>
 
             {/* Utility Row: Copy Slip & Keep Browsing */}

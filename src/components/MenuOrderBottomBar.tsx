@@ -876,28 +876,17 @@ export const MenuOrderBottomBar: React.FC<MenuOrderBottomBarProps> = ({
                     </span>
                   </div>
 
-                  {/* Order Actions: Website Direct (Primary) & WhatsApp (Secondary) */}
+                  {/* Order Actions: WhatsApp Ordering */}
                   <div className="space-y-2 pt-1">
-                    {/* Primary Direct Website Dine-In Order */}
-                    <button
-                      type="button"
-                      onClick={handlePlaceWebsiteOrder}
-                      id="website-direct-order-btn"
-                      className="w-full py-3.5 px-4 rounded-xl bg-orange-600 hover:bg-orange-700 active:scale-[0.98] text-white font-black text-xs shadow-md shadow-orange-600/20 transition-all flex items-center justify-center gap-2 cursor-pointer text-center"
-                    >
-                      <ChefHat className="w-4 h-4" />
-                      <span>Place Dine-In Order ({totalPortionsCount} portions • ₹{grandTotalPrice.toLocaleString('en-IN')})</span>
-                    </button>
-
-                    {/* Secondary WhatsApp Order (saves to local history & opens WhatsApp) */}
+                    {/* Primary WhatsApp Order (saves to history & opens WhatsApp) */}
                     <button
                       type="button"
                       onClick={handlePlaceWhatsAppOrder}
                       id="whatsapp-order-btn"
-                      className="w-full py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] text-white font-bold text-xs shadow-xs transition-all flex items-center justify-center gap-2 cursor-pointer text-center"
+                      className="w-full py-3.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] text-white font-black text-xs shadow-md shadow-emerald-600/20 transition-all flex items-center justify-center gap-2 cursor-pointer text-center"
                     >
-                      <MessageCircle className="w-3.5 h-3.5 fill-white text-emerald-600" />
-                      <span>Order via WhatsApp & Save to History</span>
+                      <MessageCircle className="w-4 h-4 fill-white text-emerald-600" />
+                      <span>Order via WhatsApp ({totalPortionsCount} {totalPortionsCount === 1 ? 'portion' : 'portions'} • ₹{grandTotalPrice.toLocaleString('en-IN')})</span>
                     </button>
 
                     {/* Secondary Actions: Waiter Slip Copy & Keep Browsing */}

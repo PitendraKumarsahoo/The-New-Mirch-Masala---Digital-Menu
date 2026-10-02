@@ -1,4 +1,4 @@
-import { MenuItem, Visit, RewardTier, Customer } from '../types';
+import { MenuItem, MenuItemStatus, Visit, RewardTier, Customer } from '../types';
 
 export type AdminRole = 'OWNER' | 'MANAGER' | 'STAFF';
 
@@ -23,6 +23,7 @@ export interface AdminMenuItem {
   image?: string;
   isVeg: boolean;
   isAvailable: boolean;
+  status?: MenuItemStatus;
   isPopular: boolean;
 }
 

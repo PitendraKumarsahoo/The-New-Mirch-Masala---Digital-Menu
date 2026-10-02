@@ -1,3 +1,11 @@
+export type MenuItemStatus =
+  | 'available'
+  | 'out of stock'
+  | 'out_of_stock'
+  | 'in stock'
+  | 'in_stock'
+  | 'unavailable';
+
 export interface MenuItem {
   id: string;
   name: string;
@@ -9,9 +17,17 @@ export interface MenuItem {
   image?: string;
   isVeg: boolean;
   isAvailable: boolean;
+  status?: MenuItemStatus;
   isPopular: boolean;
   spicyLevel?: 1 | 2 | 3; // 1 = Mild, 2 = Medium, 3 = Spicy
   tags?: string[];
+}
+
+export function isMenuItemUnavailable(item: MenuItem): boolean {
+  if (item.status === 'out of stock' || item.status === 'out_of_stock' || item.status === 'unavailable') {
+    return true;
+  }
+  return item.isAvailable === false;
 }
 
 export interface Restaurant {

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { MenuItem } from '../types';
+import { MenuItem, isMenuItemUnavailable } from '../types';
 import { VegBadge } from './VegBadge';
 import { ImageWithFallback } from './ImageWithFallback';
 import { Flame, Heart, Plus, Minus } from 'lucide-react';
@@ -25,6 +25,9 @@ export function FoodCard({ item, onSelect }: FoodCardProps) {
   const isFav = isFavorite(item.id);
   const qty = getQuantity(item.id);
 
+  const isUnavailable = isMenuItemUnavailable(item);
+  const isAvailable = !isUnavailable;
+
   const isDual = hasDualPortion(item);
   const portionCounts = getDishPortionCounts(item.id);
   const totalPortionQty = isDual ? portionCounts.total : qty;
@@ -41,6 +44,7 @@ export function FoodCard({ item, onSelect }: FoodCardProps) {
 
   const handleIncrement = (e: React.MouseEvent) => {
     e.stopPropagation();
+    if (!isAvailable) return;
     if (isDual) {
       setIsPortionModalOpen(true);
     } else {
@@ -50,6 +54,7 @@ export function FoodCard({ item, onSelect }: FoodCardProps) {
 
   const handleDecrement = (e: React.MouseEvent) => {
     e.stopPropagation();
+    if (!isAvailable) return;
     if (isDual) {
       setIsPortionModalOpen(true);
     } else {
@@ -72,7 +77,7 @@ export function FoodCard({ item, onSelect }: FoodCardProps) {
           }
         }}
         className={`group relative bg-white rounded-2xl p-3 border transition-all duration-250 cursor-pointer active:scale-[0.99] select-none shadow-frosted-card hover:shadow-frosted-card-hover hover:border-orange-200/70 focus:outline-hidden focus:ring-2 focus:ring-orange-500/50 ${
-          item.isAvailable
+          isAvailable
             ? 'border-slate-100/90'
             : 'border-slate-100/80 opacity-75 grayscale-[0.4]'
         }`}
@@ -107,10 +112,10 @@ export function FoodCard({ item, onSelect }: FoodCardProps) {
             />
           </button>
 
-          {!item.isAvailable && (
+          {isUnavailable && (
             <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-[1px] flex items-center justify-center p-1 text-center">
               <span className="px-1.5 py-0.5 bg-slate-100 text-slate-800 font-bold text-[8px] uppercase tracking-wider rounded-xs">
-                Sold Out
+                Unavailable
               </span>
             </div>
           )}
@@ -150,7 +155,7 @@ export function FoodCard({ item, onSelect }: FoodCardProps) {
               )}
             </div>
 
-            {item.isAvailable ? (
+            {isAvailable ? (
               isDual ? (
                 /* Dual Portion Add / Edit Button */
                 totalPortionQty > 0 ? (
@@ -232,7 +237,7 @@ export function FoodCard({ item, onSelect }: FoodCardProps) {
               )
             ) : (
               <span className="text-[9px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded uppercase tracking-wider">
-                SOLD OUT
+                Unavailable
               </span>
             )}
           </div>

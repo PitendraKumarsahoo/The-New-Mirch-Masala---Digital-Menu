@@ -1,6 +1,6 @@
-import { useEffect } from 'react';
-import { X, ArrowLeft, Flame, Sparkles, Heart, Check, Plus, Minus, ShoppingBag } from 'lucide-react';
-import { MenuItem } from '../types';
+import { useState, useEffect } from 'react';
+import { X, ArrowLeft, Flame, Sparkles, Heart, Check, Plus, Minus, ShoppingBag, ChefHat } from 'lucide-react';
+import { MenuItem, isMenuItemUnavailable } from '../types';
 import { VegBadge } from './VegBadge';
 import { ImageWithFallback } from './ImageWithFallback';
 import { useCustomerPreferences } from '../services/customerProfileService';
@@ -10,13 +10,25 @@ import {
   getPortionPrices,
 } from '../services/tableOrderService';
 import { SPICE_LEVEL_CONFIG } from '../types/profile';
+import {
+  getAiSuggestedSimilar,
+  DishRecommendation,
+} from '../services/aiRecommendationService';
+import { MENU_ITEMS } from '../data/menuData';
 
 interface FoodDetailProps {
   item: MenuItem | null;
   onClose: () => void;
+  allMenuItems?: MenuItem[];
+  onSelectDish?: (item: MenuItem) => void;
 }
 
-export function FoodDetail({ item, onClose }: FoodDetailProps) {
+export function FoodDetail({
+  item,
+  onClose,
+  allMenuItems = [],
+  onSelectDish,
+}: FoodDetailProps) {
   const { preferences, isFavorite, toggleFavorite } = useCustomerPreferences();
   const {
     getQuantity,
@@ -58,6 +70,61 @@ export function FoodDetail({ item, onClose }: FoodDetailProps) {
   const isDual = hasDualPortion(item);
   const portionCounts = getDishPortionCounts(item.id);
   const portionPrices = getPortionPrices(item);
+
+  const isUnavailable = isMenuItemUnavailable(item);
+  const isAvailable = !isUnavailable;
+
+  // AI-powered Suggest Similar & Complementary Pairings
+  const [recommendations, setRecommendations] = useState<DishRecommendation[]>([]);
+  const [isLoadingRecs, setIsLoadingRecs] = useState(false);
+  const [recSource, setRecSource] = useState<'gemini' | 'culinary-rules'>('culinary-rules');
+  const [addedRecDishId, setAddedRecDishId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!item) {
+      setRecommendations([]);
+      return;
+    }
+
+    let isMounted = true;
+    setIsLoadingRecs(true);
+
+    const menuPool = allMenuItems && allMenuItems.length > 0 ? allMenuItems : MENU_ITEMS;
+
+    getAiSuggestedSimilar(item, menuPool)
+      .then((result) => {
+        if (isMounted) {
+          setRecommendations(result.recommendations || []);
+          setRecSource(result.source || 'culinary-rules');
+          setIsLoadingRecs(false);
+        }
+      })
+      .catch((err) => {
+        console.warn('[FoodDetail] AI recommendations note:', err);
+        if (isMounted) {
+          setIsLoadingRecs(false);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [item?.id, allMenuItems]);
+
+  const handleAddRecommendation = (recDish: MenuItem, e: React.MouseEvent) => {
+    e.stopPropagation();
+    addDish(recDish);
+    setAddedRecDishId(recDish.id);
+    setTimeout(() => {
+      setAddedRecDishId(null);
+    }, 1800);
+  };
+
+  const handleSelectRecommendation = (recDish: MenuItem) => {
+    if (onSelectDish) {
+      onSelectDish(recDish);
+    }
+  };
 
   const priceDisplay = isDual
     ? `Half ₹${portionPrices.halfPrice} • Full ₹${portionPrices.fullPrice}`
@@ -125,10 +192,10 @@ export function FoodDetail({ item, onClose }: FoodDetailProps) {
             className="w-full h-full object-cover"
           />
 
-          {!item.isAvailable && (
+          {isUnavailable && (
             <div className="absolute inset-0 bg-slate-950/75 backdrop-blur-xs flex flex-col items-center justify-center text-white">
               <span className="px-3 py-1 bg-slate-100 text-slate-900 font-extrabold text-xs uppercase tracking-widest rounded-md shadow-md">
-                SOLD OUT
+                Unavailable
               </span>
               <p className="mt-1.5 text-xs text-slate-300">
                 Currently unavailable today
@@ -150,14 +217,14 @@ export function FoodDetail({ item, onClose }: FoodDetailProps) {
             </div>
 
             {/* Availability Status Badge */}
-            {item.isAvailable ? (
+            {isAvailable ? (
               <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-green-50 text-green-700 border border-green-200">
                 <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
                 Available
               </span>
             ) : (
               <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-600">
-                SOLD OUT
+                Unavailable
               </span>
             )}
           </div>
@@ -389,8 +456,121 @@ export function FoodDetail({ item, onClose }: FoodDetailProps) {
             )
           )}
 
+          {/* AI-Powered Suggest Similar & Complementary Pairings */}
+          {(isLoadingRecs || recommendations.length > 0) && (
+            <div className="mt-4 p-4 rounded-3xl bg-gradient-to-br from-amber-50/90 via-orange-50/50 to-stone-50 border border-orange-200/80 shadow-xs space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="w-7 h-7 rounded-xl bg-orange-600 text-white flex items-center justify-center shadow-2xs">
+                    <Sparkles className="w-3.5 h-3.5" />
+                  </div>
+                  <div>
+                    <h3 className="text-xs font-black text-stone-900 flex items-center gap-1.5 uppercase tracking-wide">
+                      <span>Chef's Pairings & Suggestions</span>
+                      <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-orange-100 text-orange-800 border border-orange-200/80">
+                        {recSource === 'gemini' ? 'AI Sommelier' : 'Complementary'}
+                      </span>
+                    </h3>
+                    <p className="text-[11px] text-stone-500">
+                      Dishes that pair deliciously with {item.name}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {isLoadingRecs ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+                  {[1, 2].map((i) => (
+                    <div
+                      key={i}
+                      className="bg-white/80 p-3 rounded-2xl border border-stone-200/60 animate-pulse flex items-center gap-3"
+                    >
+                      <div className="w-14 h-14 rounded-xl bg-stone-200 shrink-0" />
+                      <div className="flex-1 space-y-1.5">
+                        <div className="h-3.5 bg-stone-200 rounded w-2/3" />
+                        <div className="h-2.5 bg-stone-100 rounded w-full" />
+                        <div className="h-2.5 bg-stone-100 rounded w-1/2" />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+                  {recommendations.map((rec) => {
+                    const isRecAdded = addedRecDishId === rec.dish.id;
+                    const recQty = getQuantity(rec.dish.id);
+
+                    return (
+                      <div
+                        key={rec.dish.id}
+                        onClick={() => handleSelectRecommendation(rec.dish)}
+                        className="group relative bg-white hover:bg-orange-50/40 rounded-2xl p-3 border border-orange-200/70 hover:border-orange-400 transition-all shadow-2xs flex flex-col justify-between cursor-pointer"
+                      >
+                        <div className="flex items-start gap-3">
+                          <div className="relative w-14 h-14 rounded-xl overflow-hidden shrink-0 bg-stone-100 border border-stone-200/60">
+                            <ImageWithFallback
+                              src={rec.dish.image}
+                              alt={rec.dish.name}
+                              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                            />
+                            <div className="absolute top-1 left-1">
+                              <VegBadge isVeg={rec.dish.isVeg} size="sm" />
+                            </div>
+                          </div>
+
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-baseline justify-between gap-1">
+                              <h4 className="text-xs font-bold text-stone-900 group-hover:text-orange-600 transition-colors line-clamp-1">
+                                {rec.dish.name}
+                              </h4>
+                              <span className="text-xs font-black text-stone-900 shrink-0">
+                                ₹{rec.dish.price ?? 'N/A'}
+                              </span>
+                            </div>
+
+                            <p className="text-[11px] text-stone-600 line-clamp-2 mt-1 leading-snug">
+                              {rec.pairingReason}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="mt-2.5 pt-2 border-t border-stone-100 flex items-center justify-between">
+                          <span className="text-[10px] text-stone-400 font-medium">
+                            {recQty > 0 ? `${recQty} in order` : rec.dish.category}
+                          </span>
+
+                          <button
+                            type="button"
+                            onClick={(e) => handleAddRecommendation(rec.dish, e)}
+                            className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all active:scale-95 cursor-pointer ${
+                              isRecAdded
+                                ? 'bg-emerald-600 text-white shadow-2xs'
+                                : 'bg-orange-50 text-orange-700 hover:bg-orange-600 hover:text-white border border-orange-200'
+                            }`}
+                          >
+                            {isRecAdded ? (
+                              <>
+                                <Check className="w-3 h-3 stroke-[3]" />
+                                <span>Added!</span>
+                              </>
+                            ) : (
+                              <>
+                                <Plus className="w-3 h-3 stroke-[3]" />
+                                <span>Add Pair</span>
+                              </>
+                            )}
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Quick Action Button: Add/Update Order */}
-          {item.isAvailable && (
+          {isAvailable && (
             <div className="mt-3">
               {isDual ? (
                 <button
