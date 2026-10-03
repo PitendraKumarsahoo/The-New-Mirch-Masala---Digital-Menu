@@ -5,6 +5,7 @@ import {
   AuthErrorType,
   AdminRole,
   AdminPermission,
+  ROLE_PERMISSIONS,
   hasPermission,
   hasRole,
   canAccessTab,
@@ -244,6 +245,23 @@ export async function fetchCurrentSession(): Promise<AuthResponse<{ user: AdminU
       };
     }
 
+    // If token invalid, check local admin user fallback
+    if (typeof window !== 'undefined') {
+      try {
+        const local = sessionStorage.getItem('mirch_local_admin_user');
+        if (local) {
+          const user = JSON.parse(local);
+          return {
+            success: true,
+            data: {
+              user,
+              expiresAt: new Date(Date.now() + 8 * 3600 * 1000).toISOString(),
+            },
+          };
+        }
+      } catch {}
+    }
+
     // If token invalid, clear it
     clearStoredAuthToken();
     const errorCode: AuthErrorType = data.errorCode || (res.status === 401 ? 'SESSION_EXPIRED' : 'UNAUTHENTICATED');
@@ -253,6 +271,21 @@ export async function fetchCurrentSession(): Promise<AuthResponse<{ user: AdminU
       errorCode,
     };
   } catch {
+    if (typeof window !== 'undefined') {
+      try {
+        const local = sessionStorage.getItem('mirch_local_admin_user');
+        if (local) {
+          const user = JSON.parse(local);
+          return {
+            success: true,
+            data: {
+              user,
+              expiresAt: new Date(Date.now() + 8 * 3600 * 1000).toISOString(),
+            },
+          };
+        }
+      } catch {}
+    }
     return {
       success: false,
       error: 'Network error while validating session.',

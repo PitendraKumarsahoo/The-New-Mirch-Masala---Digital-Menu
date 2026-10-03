@@ -163,9 +163,23 @@ export default function App() {
     }
   }, [handleOpenComingSoon]);
 
-  // Popstate listener: catches phone back swipe gestures and hardware back buttons
+  // Popstate listener: catches phone back swipe gestures, hardware back buttons, and URL navigation
   useEffect(() => {
     const handlePopState = (e: PopStateEvent) => {
+      // Always sync currentPath with location pathname
+      const newPath = window.location.pathname;
+      setCurrentPath(newPath);
+
+      if (newPath.startsWith('/admin')) {
+        isOrderModalOpenRef.current = false;
+        setIsOrderModalOpen(false);
+        selectedFoodItemRef.current = null;
+        setSelectedFoodItem(null);
+        comingSoonTabRef.current = null;
+        setComingSoonTab(null);
+        return;
+      }
+
       // If we programmatically called history.back() because user explicitly closed a modal/tab, ignore
       if (suppressNextPopStateRef.current) {
         suppressNextPopStateRef.current = false;
@@ -199,8 +213,6 @@ export default function App() {
         window.scrollTo({ top: 0, behavior: 'smooth' });
         return;
       }
-
-      setCurrentPath(window.location.pathname);
     };
 
     window.addEventListener('popstate', handlePopState);

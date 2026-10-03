@@ -1670,10 +1670,22 @@ Respond with valid JSON containing exactly two recommendations:
     });
     app.use(vite.middlewares);
   } else {
-    const distPath = path.join(process.cwd(), 'dist');
+    // Robust path resolution for Cloud Run / Production deployment
+    let distPath = path.resolve(process.cwd(), 'dist');
+    if (!fs.existsSync(distPath)) {
+      distPath = path.resolve(__dirname, '../dist');
+    }
+    if (!fs.existsSync(distPath)) {
+      distPath = path.resolve(__dirname);
+    }
     app.use(express.static(distPath));
     app.get('*', (_req, res) => {
-      res.sendFile(path.join(distPath, 'index.html'));
+      const indexPath = path.join(distPath, 'index.html');
+      if (fs.existsSync(indexPath)) {
+        res.sendFile(indexPath);
+      } else {
+        res.status(404).send('Application bundle index.html not found. Please build before running.');
+      }
     });
   }
 

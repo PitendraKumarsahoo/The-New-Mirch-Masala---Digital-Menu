@@ -14,7 +14,12 @@ import { AuditLogEntry } from '../types/auth';
 import {
   updateMenuItemInFirestore,
   updateRestaurantSettingsInFirestore,
+  fetchLoyaltyConfigFromFirestore,
+  saveLoyaltyConfigToFirestore,
+  fetchReviewOfferFromFirestore,
+  saveReviewOfferToFirestore,
 } from '../../services/firebaseDbService';
+import { LoyaltyConfig, RewardTier, ReviewOfferConfig } from '../../types';
 
 const RESTAURANT_ID = 'mirch-masala-01';
 
@@ -44,30 +49,39 @@ function getInitialLocalState(): LocalAdminState {
 
   const defaultRewards: AdminRewardItem[] = [
     {
-      rewardId: 'REW-05',
+      rewardId: 'reward-tier-10',
       restaurantId: RESTAURANT_ID,
-      rewardName: 'Free Starter / Mocktail',
-      rewardDescription: 'Enjoy a free soup, crispy starter or special mocktail on your 5th visit.',
-      requiredVisits: 5,
-      isActive: true,
-      createdAt: '2025-01-01',
-    },
-    {
-      rewardId: 'REW-07',
-      restaurantId: RESTAURANT_ID,
-      rewardName: '15% Off Total Bill',
-      rewardDescription: 'Get flat 15% discount on your entire dining bill on your 7th visit.',
-      requiredVisits: 7,
-      isActive: true,
-      createdAt: '2025-01-01',
-    },
-    {
-      rewardId: 'REW-10',
-      restaurantId: RESTAURANT_ID,
-      rewardName: 'Free Special Dish',
-      rewardDescription: 'Free Chef Special Biryani or Curry of your choice on your 10th milestone visit!',
+      rewardName: 'Free Chilled Cold Drink',
+      rewardDescription: 'Enjoy 1 complimentary chilled cold drink of your choice with your meal on your 10th visit.',
       requiredVisits: 10,
       isActive: true,
+      discountType: 'free_item',
+      freeItemName: 'Cold Drink',
+      shortBadge: 'Free Cold Drink',
+      createdAt: '2025-01-01',
+    },
+    {
+      rewardId: 'reward-tier-20',
+      restaurantId: RESTAURANT_ID,
+      rewardName: '20% Off Total Bill',
+      rewardDescription: 'Get flat 20% discount on your entire dining bill on your 20th visit.',
+      requiredVisits: 20,
+      isActive: true,
+      discountType: 'percentage',
+      discountAmount: 20,
+      shortBadge: '20% OFF',
+      createdAt: '2025-01-01',
+    },
+    {
+      rewardId: 'reward-tier-30',
+      restaurantId: RESTAURANT_ID,
+      rewardName: 'Special: 40% Off or Free Dish',
+      rewardDescription: 'Free Chef Special Biryani or 40% discount on your 30th milestone visit!',
+      requiredVisits: 30,
+      isActive: true,
+      discountType: 'special',
+      discountAmount: 40,
+      shortBadge: '40% OFF / Free Dish',
       createdAt: '2025-01-01',
     },
   ];
@@ -292,77 +306,8 @@ export async function getAdminCustomers(
   );
 
   let list: AdminCustomerSummary[] = [];
-  if (res && res.success && Array.isArray(res.customers) && res.customers.length > 0) {
+  if (res && res.success && Array.isArray(res.customers)) {
     list = res.customers;
-  } else {
-    // Fallback demo customers
-    list = [
-      {
-        customerId: 'CUS-A89F12',
-        restaurantId,
-        name: 'Amitabh Sen',
-        mobile: '+91 94370 54321',
-        createdAt: '2025-01-10',
-        totalVisits: 8,
-        currentVisits: 8,
-        availableRewards: 2,
-        lastVisitDate: '2025-02-28',
-        isActive: true,
-        status: 'ACTIVE',
-      },
-      {
-        customerId: 'CUS-B72D45',
-        restaurantId,
-        name: 'Priyanka Das',
-        mobile: '+91 98610 11223',
-        createdAt: '2025-01-18',
-        totalVisits: 5,
-        currentVisits: 5,
-        availableRewards: 1,
-        lastVisitDate: '2025-02-28',
-        isActive: true,
-        status: 'ACTIVE',
-      },
-      {
-        customerId: 'CUS-C33E98',
-        restaurantId,
-        name: 'Rohan Rath',
-        mobile: '+91 70081 99887',
-        createdAt: '2025-02-02',
-        totalVisits: 2,
-        currentVisits: 2,
-        availableRewards: 0,
-        lastVisitDate: '2025-02-27',
-        isActive: true,
-        status: 'ACTIVE',
-      },
-      {
-        customerId: 'CUS-D55K11',
-        restaurantId,
-        name: 'Sneha Pattnaik',
-        mobile: '+91 94382 33445',
-        createdAt: '2025-01-05',
-        totalVisits: 12,
-        currentVisits: 2,
-        availableRewards: 3,
-        lastVisitDate: '2025-02-24',
-        isActive: true,
-        status: 'ACTIVE',
-      },
-      {
-        customerId: 'CUS-E99T76',
-        restaurantId,
-        name: 'Debashish Mishra',
-        mobile: '+91 82490 88776',
-        createdAt: '2025-02-14',
-        totalVisits: 1,
-        currentVisits: 1,
-        availableRewards: 0,
-        lastVisitDate: '2025-02-20',
-        isActive: true,
-        status: 'ACTIVE',
-      },
-    ];
   }
 
   if (query.trim()) {
@@ -459,70 +404,8 @@ export async function getAdminVisits(
   const res = await callAuthorizedApi<{ success: boolean; visits: AdminVisitRecord[] }>('/api/admin/visits');
 
   let list: AdminVisitRecord[] = [];
-  if (res && res.success && Array.isArray(res.visits) && res.visits.length > 0) {
+  if (res && res.success && Array.isArray(res.visits)) {
     list = res.visits;
-  } else {
-    // Fallback demo visits
-    const today = new Date().toISOString().split('T')[0];
-    const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
-
-    list = [
-      {
-        visitId: 'VIS-104',
-        customerId: 'CUS-A89F12',
-        customerName: 'Amitabh Sen',
-        mobile: '+91 94370 54321',
-        restaurantId,
-        visitDate: today,
-        visitTime: '01:45 PM',
-        verifiedBy: 'Rajesh Sharma (OWNER)',
-        status: 'VERIFIED',
-      },
-      {
-        visitId: 'VIS-103',
-        customerId: 'CUS-B72D45',
-        customerName: 'Priyanka Das',
-        mobile: '+91 98610 11223',
-        restaurantId,
-        visitDate: today,
-        visitTime: '12:30 PM',
-        verifiedBy: 'Vikram Singh (MANAGER)',
-        status: 'VERIFIED',
-      },
-      {
-        visitId: 'VIS-102',
-        customerId: 'CUS-C33E98',
-        customerName: 'Rohan Rath',
-        mobile: '+91 70081 99887',
-        restaurantId,
-        visitDate: yesterday,
-        visitTime: '08:15 PM',
-        verifiedBy: 'Pooja Verma (STAFF)',
-        status: 'VERIFIED',
-      },
-      {
-        visitId: 'VIS-101',
-        customerId: 'CUS-D55K11',
-        customerName: 'Sneha Pattnaik',
-        mobile: '+91 94382 33445',
-        restaurantId,
-        visitDate: yesterday,
-        visitTime: '07:50 PM',
-        verifiedBy: 'Rajesh Sharma (OWNER)',
-        status: 'VERIFIED',
-      },
-      {
-        visitId: 'VIS-100',
-        customerId: 'CUS-E99T76',
-        customerName: 'Debashish Mishra',
-        mobile: '+91 82490 88776',
-        restaurantId,
-        visitDate: '2025-02-24',
-        visitTime: '09:10 PM',
-        verifiedBy: 'Vikram Singh (MANAGER)',
-        status: 'VERIFIED',
-      },
-    ];
   }
 
   if (query.trim()) {
@@ -539,11 +422,38 @@ export async function getAdminVisits(
 }
 
 // ----------------------------------------------------------------------
-// 5. Reward Management
+// 5. Reward Management (Dynamic Strikes: 10, 20, 30 strikes & custom offers)
 // ----------------------------------------------------------------------
 export async function getAdminRewards(restaurantId = RESTAURANT_ID): Promise<AdminRewardItem[]> {
-  const res = await callAuthorizedApi<{ success: boolean; rewards: AdminRewardItem[] }>('/api/admin/rewards');
+  try {
+    // 1. Try to load directly from Firestore
+    const loyaltyConfig = await fetchLoyaltyConfigFromFirestore();
+    if (loyaltyConfig && Array.isArray(loyaltyConfig.rewardTiers) && loyaltyConfig.rewardTiers.length > 0) {
+      const mapped: AdminRewardItem[] = loyaltyConfig.rewardTiers.map((tier) => ({
+        rewardId: tier.id,
+        restaurantId,
+        rewardName: tier.name,
+        rewardDescription: tier.description,
+        requiredVisits: tier.strike,
+        shortBadge: tier.shortBadge,
+        discountType: tier.discountType,
+        discountAmount: tier.discountAmount,
+        freeItemName: tier.freeItemName,
+        isActive: tier.isActive !== false,
+        createdAt: '2025-01-01',
+      }));
+      // Keep local state in sync
+      const state = getLocalState();
+      state.rewards = mapped;
+      saveLocalState(state);
+      return mapped;
+    }
+  } catch (err) {
+    console.warn('[adminService] Firestore rewards fetch notice:', err);
+  }
 
+  // 2. Fallback to API route or local state
+  const res = await callAuthorizedApi<{ success: boolean; rewards: AdminRewardItem[] }>('/api/admin/rewards');
   if (res && res.success && Array.isArray(res.rewards) && res.rewards.length > 0) {
     return res.rewards;
   }
@@ -555,17 +465,7 @@ export async function createAdminReward(
   reward: Omit<AdminRewardItem, 'rewardId' | 'restaurantId' | 'createdAt'>,
   restaurantId = RESTAURANT_ID
 ): Promise<{ success: boolean; reward?: AdminRewardItem; error?: string }> {
-  const res = await callAuthorizedApi<{ success: boolean; reward?: AdminRewardItem }>(
-    '/api/admin/rewards',
-    'POST',
-    reward
-  );
-
-  if (res && res.success && res.reward) {
-    return { success: true, reward: res.reward };
-  }
-
-  const newId = `REW-${reward.requiredVisits.toString().padStart(2, '0')}`;
+  const newId = `reward-tier-${reward.requiredVisits}-${Date.now().toString(36).substring(4)}`;
   const newReward: AdminRewardItem = {
     ...reward,
     rewardId: newId,
@@ -576,6 +476,32 @@ export async function createAdminReward(
   const state = getLocalState();
   state.rewards.push(newReward);
   saveLocalState(state);
+
+  // Sync to Firestore
+  try {
+    const existingConfig = await fetchLoyaltyConfigFromFirestore();
+    const updatedTiers: RewardTier[] = [
+      ...(existingConfig.rewardTiers || []),
+      {
+        id: newReward.rewardId,
+        strike: newReward.requiredVisits,
+        name: newReward.rewardName,
+        description: newReward.rewardDescription,
+        shortBadge: newReward.shortBadge || `${newReward.requiredVisits} Strikes`,
+        discountType: newReward.discountType || 'special',
+        discountAmount: newReward.discountAmount,
+        freeItemName: newReward.freeItemName,
+        isActive: newReward.isActive,
+      },
+    ];
+    await saveLoyaltyConfigToFirestore({
+      ...existingConfig,
+      rewardTiers: updatedTiers,
+      visitsRequired: Math.max(existingConfig.visitsRequired, newReward.requiredVisits),
+    });
+  } catch (err) {
+    console.warn('[adminService] Firestore create reward sync notice:', err);
+  }
 
   return { success: true, reward: newReward };
 }
@@ -590,6 +516,40 @@ export async function updateAdminReward(
     state.rewards[idx] = reward;
     saveLocalState(state);
   }
+
+  // Sync to Firestore
+  try {
+    const existingConfig = await fetchLoyaltyConfigFromFirestore();
+    const currentTiers = existingConfig.rewardTiers || [];
+    const tierIdx = currentTiers.findIndex((t) => t.id === reward.rewardId);
+    const updatedTier: RewardTier = {
+      id: reward.rewardId,
+      strike: reward.requiredVisits,
+      name: reward.rewardName,
+      description: reward.rewardDescription,
+      shortBadge: reward.shortBadge || `${reward.requiredVisits} Strikes`,
+      discountType: reward.discountType || 'special',
+      discountAmount: reward.discountAmount,
+      freeItemName: reward.freeItemName,
+      isActive: reward.isActive,
+    };
+
+    if (tierIdx >= 0) {
+      currentTiers[tierIdx] = updatedTier;
+    } else {
+      currentTiers.push(updatedTier);
+    }
+
+    const maxStrike = currentTiers.reduce((max, t) => Math.max(max, t.strike), 10);
+    await saveLoyaltyConfigToFirestore({
+      ...existingConfig,
+      rewardTiers: currentTiers,
+      visitsRequired: Math.max(existingConfig.visitsRequired, maxStrike),
+    });
+  } catch (err) {
+    console.warn('[adminService] Firestore update reward sync notice:', err);
+  }
+
   return { success: true };
 }
 
@@ -598,16 +558,65 @@ export async function toggleAdminReward(
   isActive: boolean,
   restaurantId = RESTAURANT_ID
 ): Promise<{ success: boolean; error?: string }> {
-  await callAuthorizedApi(`/api/admin/rewards/${rewardId}/toggle`, 'PATCH');
-
   const state = getLocalState();
   const item = state.rewards.find((r) => r.rewardId === rewardId);
   if (item) {
     item.isActive = isActive;
     saveLocalState(state);
+    await updateAdminReward(item, restaurantId);
+  }
+  return { success: true };
+}
+
+export async function deleteAdminReward(
+  rewardId: string,
+  restaurantId = RESTAURANT_ID
+): Promise<{ success: boolean; error?: string }> {
+  const state = getLocalState();
+  state.rewards = state.rewards.filter((r) => r.rewardId !== rewardId);
+  saveLocalState(state);
+
+  try {
+    const existingConfig = await fetchLoyaltyConfigFromFirestore();
+    const updatedTiers = (existingConfig.rewardTiers || []).filter((t) => t.id !== rewardId);
+    await saveLoyaltyConfigToFirestore({
+      ...existingConfig,
+      rewardTiers: updatedTiers,
+    });
+  } catch (err) {
+    console.warn('[adminService] Firestore delete reward sync notice:', err);
   }
 
   return { success: true };
+}
+
+// ----------------------------------------------------------------------
+// 5B. Review Offer Management (Customer Google Review Perk / Offer)
+// ----------------------------------------------------------------------
+export async function getAdminReviewOffer(): Promise<ReviewOfferConfig> {
+  try {
+    return await fetchReviewOfferFromFirestore();
+  } catch (err) {
+    console.warn('[adminService] Review offer fetch notice:', err);
+    return {
+      isEnabled: true,
+      title: 'Google Review Special Offer',
+      rewardType: 'free_item',
+      rewardValue: 'Free Chilled Cold Drink',
+      description: 'Share your genuine review on Google and receive 1 Free Cold Drink at billing!',
+      terms: 'Show verified Google review screen to staff before bill generation.',
+      badgeText: 'FREE COLD DRINK',
+    };
+  }
+}
+
+export async function saveAdminReviewOffer(offer: ReviewOfferConfig): Promise<boolean> {
+  try {
+    return await saveReviewOfferToFirestore(offer);
+  } catch (err) {
+    console.warn('[adminService] Review offer save notice:', err);
+    return false;
+  }
 }
 
 // ----------------------------------------------------------------------

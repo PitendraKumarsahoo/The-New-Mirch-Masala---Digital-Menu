@@ -11,10 +11,13 @@ import {
   XCircle,
   AlertTriangle,
   Lock,
+  IndianRupee,
+  Tag,
 } from 'lucide-react';
 import { AdminMenuItem } from '../../types/admin';
 import { MenuEditorModal } from '../components/MenuEditorModal';
 import { ConfirmationModal } from '../components/ConfirmationModal';
+import { EditPriceModal } from '../components/EditPriceModal';
 import { useAdminAuth } from '../context/AdminAuthContext';
 
 interface AdminMenuViewProps {
@@ -50,6 +53,7 @@ export const AdminMenuView: React.FC<AdminMenuViewProps> = ({
   // Modal states
   const [isEditorOpen, setIsEditorOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<AdminMenuItem | null>(null);
+  const [priceEditingItem, setPriceEditingItem] = useState<AdminMenuItem | null>(null);
 
   // Delete modal state
   const [deletingItem, setDeletingItem] = useState<AdminMenuItem | null>(null);
@@ -287,10 +291,23 @@ export const AdminMenuView: React.FC<AdminMenuViewProps> = ({
 
                     {/* Price */}
                     <td className="py-3 px-4">
-                      <div className="font-mono">
-                        <span className="font-bold text-white text-sm">₹{item.price}</span>
-                        {item.secondaryPrice && (
-                          <span className="text-stone-400 text-xs ml-1">/ ₹{item.secondaryPrice}</span>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <div className="font-mono">
+                          <span className="font-bold text-white text-sm">₹{item.price}</span>
+                          {item.secondaryPrice && (
+                            <span className="text-stone-400 text-xs ml-1">/ ₹{item.secondaryPrice}</span>
+                          )}
+                        </div>
+                        {canUpdate && (
+                          <button
+                            type="button"
+                            onClick={() => setPriceEditingItem(item)}
+                            title="Edit Price directly in Firestore menu collection"
+                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-500/10 hover:bg-amber-500/20 active:scale-95 text-amber-400 hover:text-amber-300 border border-amber-500/30 text-[11px] font-semibold transition-all cursor-pointer shrink-0"
+                          >
+                            <IndianRupee className="w-3 h-3" />
+                            <span>Edit Price</span>
+                          </button>
                         )}
                       </div>
                     </td>
@@ -356,8 +373,17 @@ export const AdminMenuView: React.FC<AdminMenuViewProps> = ({
                       <div className="inline-flex items-center gap-1">
                         {canUpdate && (
                           <button
+                            onClick={() => setPriceEditingItem(item)}
+                            title="Edit Price directly in Firestore menu collection"
+                            className="p-1.5 text-stone-400 hover:text-amber-400 hover:bg-stone-800 rounded-lg transition-colors cursor-pointer"
+                          >
+                            <IndianRupee className="w-4 h-4" />
+                          </button>
+                        )}
+                        {canUpdate && (
+                          <button
                             onClick={() => handleOpenEdit(item)}
-                            title="Edit Dish"
+                            title="Edit Dish Full Details"
                             className="p-1.5 text-stone-400 hover:text-amber-400 hover:bg-stone-800 rounded-lg transition-colors cursor-pointer"
                           >
                             <Edit2 className="w-4 h-4" />
@@ -408,6 +434,21 @@ export const AdminMenuView: React.FC<AdminMenuViewProps> = ({
         isConfirming={isDeleting}
         onConfirm={handleConfirmDelete}
         onCancel={() => setDeletingItem(null)}
+      />
+
+      {/* Edit Price Directly in Firestore Modal */}
+      <EditPriceModal
+        isOpen={!!priceEditingItem}
+        item={priceEditingItem}
+        onClose={() => setPriceEditingItem(null)}
+        onPriceUpdated={(updatedItem, newPrice, newSecondaryPrice) => {
+          onSaveItem({
+            ...updatedItem,
+            price: newPrice,
+            secondaryPrice: newSecondaryPrice,
+          });
+          setPriceEditingItem(null);
+        }}
       />
     </div>
   );

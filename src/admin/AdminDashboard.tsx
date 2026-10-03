@@ -33,6 +33,7 @@ import {
   createAdminReward,
   updateAdminReward,
   toggleAdminReward,
+  deleteAdminReward,
   getAdminReviews,
   getAdminRestaurantSettings,
   updateAdminRestaurantSettings,
@@ -280,6 +281,13 @@ const AdminDashboardInner: React.FC = () => {
     showToast(isActive ? 'Reward tier activated.' : 'Reward tier deactivated.');
   };
 
+  const handleDeleteReward = async (rewardId: string) => {
+    clearMenuCache();
+    await deleteAdminReward(rewardId);
+    setRewards((prev) => prev.filter((r) => r.rewardId !== rewardId));
+    showToast('Reward tier deleted from system and Firestore.');
+  };
+
   // Settings Handlers
   const handleSaveSettings = async (newSettings: AdminRestaurantSettings) => {
     clearMenuCache();
@@ -394,6 +402,7 @@ const AdminDashboardInner: React.FC = () => {
               rewards={rewards}
               onSaveReward={handleSaveReward}
               onToggleActive={handleToggleRewardActive}
+              onDeleteReward={handleDeleteReward}
             />
           )}
 

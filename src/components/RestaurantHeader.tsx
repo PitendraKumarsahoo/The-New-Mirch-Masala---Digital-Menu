@@ -2,6 +2,7 @@ import { MapPin, Clock, Star, ShieldCheck, User as UserIcon } from 'lucide-react
 import { RESTAURANT_INFO } from '../data/menuData';
 import { RestaurantInfo } from '../types';
 import { User } from 'firebase/auth';
+import { GoogleIcon } from './icons/GoogleIcon';
 
 export type SyncConnectionStatus = 'fresh' | 'cached' | 'fallback' | 'offline';
 
@@ -83,11 +84,13 @@ export function RestaurantHeader({
                   className="w-3.5 h-3.5 rounded-full object-cover"
                   referrerPolicy="no-referrer"
                 />
-              ) : (
+              ) : currentUser ? (
                 <UserIcon className="w-3 h-3 text-orange-600" />
+              ) : (
+                <GoogleIcon className="w-3 h-3 shrink-0" />
               )}
               <span className="max-w-[80px] sm:max-w-[110px] truncate">
-                {currentUser ? (currentUser.displayName?.split(' ')[0] || 'Account') : 'Sign In'}
+                {currentUser ? (currentUser.displayName?.split(' ')[0] || 'Account') : 'Google Login'}
               </span>
             </button>
           )}

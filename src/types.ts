@@ -70,14 +70,28 @@ export type DietaryFilter = 'all' | 'veg' | 'non-veg';
 
 export type BottomNavTab = 'menu' | 'rewards' | 'review' | 'profile';
 
+export type DiscountType = 'flat' | 'percentage' | 'free_item' | 'special';
+
 export interface RewardTier {
   strike: number;
   id: string;
   name: string;
   description: string;
   shortBadge: string;
-  discountType: 'flat' | 'percentage' | 'special';
+  discountType: DiscountType;
   discountAmount?: number; // e.g. 50, 20, 40
+  freeItemName?: string; // e.g. 'Cold Drink', 'Soft Drink', 'Biryani'
+  isActive?: boolean;
+}
+
+export interface ReviewOfferConfig {
+  isEnabled: boolean;
+  title: string;
+  rewardType: 'free_item' | 'percentage' | 'flat' | 'special';
+  rewardValue: string; // e.g. 'Free Cold Drink', '10% OFF', '₹50 OFF'
+  description: string;
+  terms?: string;
+  badgeText?: string;
 }
 
 export interface Customer {
@@ -86,6 +100,8 @@ export interface Customer {
   name: string;
   mobile: string;
   phone: string; // normalized 10-digit mobile number alias
+  email?: string;
+  tier?: string;
   password?: string;
   createdAt: string;
   totalVisits: number;
@@ -143,10 +159,12 @@ export interface RewardRedemption {
 
 export interface LoyaltyConfig {
   rewardVisitTarget?: number;
-  visitsRequired: number; // 10 visits for reward
+  visitsRequired: number; // e.g. 10, 20, 30 strikes for full ladder
   rewardName: string;
   rewardDescription: string;
   rewardTiers?: RewardTier[];
+  reviewOffer?: ReviewOfferConfig;
+  updatedAt?: string;
 }
 
 export interface LoyaltyStatus {

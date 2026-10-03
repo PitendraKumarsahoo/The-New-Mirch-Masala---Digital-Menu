@@ -22,8 +22,9 @@ import {
   Unsubscribe,
 } from 'firebase/firestore';
 import { db } from '../config/firebase';
-import { MenuItem, RestaurantInfo, Customer, Visit } from '../types';
+import { MenuItem, RestaurantInfo, Customer, Visit, LoyaltyConfig, RewardTier, ReviewOfferConfig } from '../types';
 import { MENU_ITEMS, RESTAURANT_INFO } from '../data/menuData';
+import { LOYALTY_CONFIG, DEFAULT_REWARD_TIERS, DEFAULT_REVIEW_OFFER } from '../config/loyaltyConfig';
 import { PlacedOrder } from './orderHistoryService';
 import { Review } from '../types/review';
 
@@ -145,6 +146,32 @@ export async function updateMenuItemInFirestore(
   } catch (error) {
     console.error(`[Firestore] Failed to update menu item ${itemId}:`, error);
     return false;
+  }
+}
+
+/**
+ * Directly updates the price and optional secondary price of a menu item in Firestore `menuItems/{itemId}`
+ */
+export async function updateMenuItemPriceDirectlyInFirestore(
+  itemId: string,
+  price: number,
+  secondaryPrice?: number | null
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const itemRef = doc(db, COLLECTIONS.MENU, itemId);
+    const updatePayload: Record<string, any> = {
+      price,
+      updatedAt: serverTimestamp(),
+    };
+    if (secondaryPrice !== undefined) {
+      updatePayload.secondaryPrice = secondaryPrice;
+    }
+    await setDoc(itemRef, updatePayload, { merge: true });
+    console.log(`[Firestore] Successfully updated price for item ${itemId} to ₹${price}`);
+    return { success: true };
+  } catch (err: any) {
+    console.error(`[Firestore] Direct price update failed for item ${itemId}:`, err);
+    return { success: false, error: err?.message || 'Failed to update price in Firestore' };
   }
 }
 
@@ -442,3 +469,155 @@ export async function updateRestaurantSettingsInFirestore(
     return false;
   }
 }
+
+// ----------------------------------------------------------------------
+// 6. DYNAMIC LOYALTY TIERS & REVIEW OFFERS (Owner/Admin Full Customization)
+// ----------------------------------------------------------------------
+
+/**
+ * Fetches the active loyalty configuration (strikes ladder, discounts, free items)
+ * from Firestore. If not yet created, seeds with defaults (10, 20, 30 strikes).
+ */
+export async function fetchLoyaltyConfigFromFirestore(): Promise<LoyaltyConfig> {
+  try {
+    const docRef = doc(db, COLLECTIONS.SETTINGS, 'loyaltyConfig');
+    const snap = await getDoc(docRef);
+    if (snap.exists()) {
+      const data = snap.data() as Partial<LoyaltyConfig>;
+      return {
+        ...LOYALTY_CONFIG,
+        ...data,
+        rewardTiers: Array.isArray(data.rewardTiers) && data.rewardTiers.length > 0
+          ? data.rewardTiers
+          : DEFAULT_REWARD_TIERS,
+        reviewOffer: data.reviewOffer || DEFAULT_REVIEW_OFFER,
+      };
+    }
+
+    // Auto-seed to Firestore if first time
+    await setDoc(docRef, {
+      ...LOYALTY_CONFIG,
+      updatedAt: serverTimestamp(),
+    });
+    return LOYALTY_CONFIG;
+  } catch (error) {
+    console.warn('[Firestore] Fetch loyalty config error:', error);
+    return LOYALTY_CONFIG;
+  }
+}
+
+/**
+ * Saves customized loyalty configuration (10, 20, 30 strikes, discounts, free drinks/items)
+ * directly into Firestore.
+ */
+export async function saveLoyaltyConfigToFirestore(config: LoyaltyConfig): Promise<boolean> {
+  try {
+    const docRef = doc(db, COLLECTIONS.SETTINGS, 'loyaltyConfig');
+    await setDoc(docRef, {
+      ...config,
+      updatedAt: serverTimestamp(),
+    }, { merge: true });
+
+    // Also sync reward tiers to the rewards collection for admin rewards view
+    if (Array.isArray(config.rewardTiers)) {
+      for (const tier of config.rewardTiers) {
+        const rewardRef = doc(db, COLLECTIONS.REWARDS, tier.id);
+        await setDoc(rewardRef, {
+          rewardId: tier.id,
+          restaurantId: 'mirch-masala-01',
+          rewardName: tier.name,
+          rewardDescription: tier.description,
+          requiredVisits: tier.strike,
+          shortBadge: tier.shortBadge,
+          discountType: tier.discountType,
+          discountAmount: tier.discountAmount || 0,
+          freeItemName: tier.freeItemName || '',
+          isActive: tier.isActive !== false,
+          updatedAt: serverTimestamp(),
+        }, { merge: true });
+      }
+    }
+
+    return true;
+  } catch (error) {
+    console.error('[Firestore] Save loyalty config error:', error);
+    return false;
+  }
+}
+
+/**
+ * Fetches the active Google Review incentive offer (e.g. Free Cold Drink, 10% OFF, etc.)
+ */
+export async function fetchReviewOfferFromFirestore(): Promise<ReviewOfferConfig> {
+  try {
+    const docRef = doc(db, COLLECTIONS.SETTINGS, 'reviewOffer');
+    const snap = await getDoc(docRef);
+    if (snap.exists()) {
+      return snap.data() as ReviewOfferConfig;
+    }
+    // Also check loyaltyConfig
+    const loyaltyRef = doc(db, COLLECTIONS.SETTINGS, 'loyaltyConfig');
+    const loyaltySnap = await getDoc(loyaltyRef);
+    if (loyaltySnap.exists() && loyaltySnap.data()?.reviewOffer) {
+      return loyaltySnap.data()?.reviewOffer as ReviewOfferConfig;
+    }
+    return DEFAULT_REVIEW_OFFER;
+  } catch (error) {
+    console.warn('[Firestore] Fetch review offer error:', error);
+    return DEFAULT_REVIEW_OFFER;
+  }
+}
+
+/**
+ * Saves the customized Google Review offer into Firestore
+ */
+export async function saveReviewOfferToFirestore(offer: ReviewOfferConfig): Promise<boolean> {
+  try {
+    const docRef = doc(db, COLLECTIONS.SETTINGS, 'reviewOffer');
+    await setDoc(docRef, {
+      ...offer,
+      updatedAt: serverTimestamp(),
+    }, { merge: true });
+
+    // Also sync to loyaltyConfig
+    const loyaltyRef = doc(db, COLLECTIONS.SETTINGS, 'loyaltyConfig');
+    await setDoc(loyaltyRef, {
+      reviewOffer: offer,
+      updatedAt: serverTimestamp(),
+    }, { merge: true });
+
+    return true;
+  } catch (error) {
+    console.error('[Firestore] Save review offer error:', error);
+    return false;
+  }
+}
+
+/**
+ * Real-time listener for loyalty configuration changes
+ */
+export function subscribeToLoyaltyConfig(
+  callback: (config: LoyaltyConfig) => void
+): Unsubscribe {
+  const docRef = doc(db, COLLECTIONS.SETTINGS, 'loyaltyConfig');
+  return onSnapshot(
+    docRef,
+    (snap) => {
+      if (snap.exists()) {
+        const data = snap.data() as Partial<LoyaltyConfig>;
+        callback({
+          ...LOYALTY_CONFIG,
+          ...data,
+          rewardTiers: Array.isArray(data.rewardTiers) && data.rewardTiers.length > 0
+            ? data.rewardTiers
+            : DEFAULT_REWARD_TIERS,
+          reviewOffer: data.reviewOffer || DEFAULT_REVIEW_OFFER,
+        });
+      }
+    },
+    (err) => {
+      console.warn('[Firestore] Loyalty config listener notice:', err);
+    }
+  );
+}
+

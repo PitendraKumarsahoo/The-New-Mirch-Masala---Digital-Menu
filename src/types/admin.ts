@@ -84,10 +84,14 @@ export interface AdminRewardItem {
   restaurantId: string;
   rewardName: string;
   rewardDescription: string;
-  requiredVisits: number;
+  requiredVisits: number; // strike milestone e.g. 10, 20, 30 strikes
   isActive: boolean;
   status?: string;
   createdAt?: string;
+  discountType?: 'flat' | 'percentage' | 'free_item' | 'special';
+  discountAmount?: number;
+  freeItemName?: string;
+  shortBadge?: string;
 }
 
 export interface AdminReviewRecord {

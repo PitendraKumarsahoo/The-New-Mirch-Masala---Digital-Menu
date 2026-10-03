@@ -17,12 +17,15 @@ import {
 import {
   registerCustomer,
   loginCustomer,
+  getLoyaltyStatus,
   normalizePhoneNumber,
   getDemoCustomers,
 } from '../../services/loyaltyService';
 import { STAFF_METADATA, StaffAccount } from '../../config/staffAccounts';
 import { loginAdmin } from '../../admin/services/adminAuthService';
 import { Customer, LoyaltyStatus } from '../../types';
+import { signInWithGoogle } from '../../services/firebaseAuthService';
+import { GoogleIcon } from '../icons/GoogleIcon';
 
 interface LoyaltyRegistrationProps {
   onSuccess: (customer: Customer, loyalty: LoyaltyStatus, isNew?: boolean) => void;
@@ -61,6 +64,34 @@ export const LoyaltyRegistration: React.FC<LoyaltyRegistrationProps> = ({
 
   // Quick test demo diners
   const demoCustomers = getDemoCustomers();
+
+  const handleGoogleLoyaltySignIn = async () => {
+    setError(null);
+    setLoading(true);
+    try {
+      const res = await signInWithGoogle();
+      if (res.success && res.user) {
+        const u = res.user;
+        const custName = u.displayName || u.email?.split('@')[0] || 'Diner';
+        const cleanPhone = (u.phoneNumber || `999${u.uid.slice(0, 7).replace(/\D/g, '0')}`).slice(0, 10);
+        const registerRes = await registerCustomer(custName, cleanPhone, 'google123');
+        if (registerRes.success && registerRes.customer && registerRes.loyalty) {
+          onSuccess(registerRes.customer, registerRes.loyalty, registerRes.isNew);
+        } else {
+          const statusRes = await getLoyaltyStatus(cleanPhone, cleanPhone);
+          if (statusRes.success && statusRes.customer && statusRes.loyalty) {
+            onSuccess(statusRes.customer, statusRes.loyalty, false);
+          }
+        }
+      } else if (res.error) {
+        setError(res.error);
+      }
+    } catch (err: any) {
+      setError(err?.message || 'Google sign in failed');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleCustomerSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -290,6 +321,26 @@ export const LoyaltyRegistration: React.FC<LoyaltyRegistrationProps> = ({
               </div>
             </div>
 
+            {/* 1-Tap Google Sign-In */}
+            <div>
+              <button
+                type="button"
+                id="loyalty-google-signin-btn"
+                onClick={handleGoogleLoyaltySignIn}
+                disabled={loading}
+                className="w-full py-2.5 px-3 bg-white hover:bg-stone-50 active:scale-[0.98] border border-stone-300 rounded-xl font-bold text-stone-800 text-xs flex items-center justify-center gap-2.5 shadow-2xs transition-all cursor-pointer disabled:opacity-50"
+              >
+                <GoogleIcon className="w-4 h-4 shrink-0" />
+                <span>Continue with Google</span>
+              </button>
+              <div className="relative flex items-center justify-center my-3">
+                <div className="border-t border-stone-200 w-full" />
+                <span className="bg-white px-2 text-[10px] font-bold text-stone-400 uppercase tracking-wider absolute">
+                  or with mobile number
+                </span>
+              </div>
+            </div>
+
             {error && (
               <div className="p-3 rounded-xl bg-red-50 border border-red-200 flex items-start gap-2.5 text-xs text-red-700">
                 <AlertCircle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
@@ -420,36 +471,6 @@ export const LoyaltyRegistration: React.FC<LoyaltyRegistrationProps> = ({
                 )}
               </button>
             </form>
-
-            {/* Quick Demo Diners (Instant Testing of 5th, 7th, 10th strikes) */}
-            {demoCustomers.length > 0 && (
-              <div className="mt-4 pt-4 border-t border-stone-100">
-                <div className="flex items-center justify-between text-[11px] font-bold text-stone-500 uppercase tracking-wider mb-2">
-                  <span>Fast Demo Diner Logins</span>
-                  <span className="text-[10px] text-amber-700 font-normal">Click to test milestones</span>
-                </div>
-                <div className="grid grid-cols-3 gap-1.5">
-                  {demoCustomers.map((d) => (
-                    <button
-                      key={d.customerId}
-                      type="button"
-                      onClick={() => handleQuickDiner(d)}
-                      className="p-2 rounded-xl bg-stone-50 hover:bg-amber-50 border border-stone-200 hover:border-amber-300 text-left transition-colors cursor-pointer group"
-                    >
-                      <span className="font-bold text-xs text-stone-900 group-hover:text-amber-900 block truncate">
-                        {d.name.split(' ')[0]}
-                      </span>
-                      <span className="text-[10px] font-semibold text-amber-700 block">
-                        {d.totalVisits} Strikes
-                      </span>
-                      <span className="text-[9px] text-stone-500 block truncate">
-                        {d.totalVisits === 4 ? 'Next: ₹50 OFF' : d.totalVisits === 6 ? 'Next: 20% OFF' : 'Next: 40% OFF'}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
           </div>
         </div>
       )}

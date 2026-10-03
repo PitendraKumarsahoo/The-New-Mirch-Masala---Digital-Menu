@@ -1,10 +1,12 @@
-import { Customer, Visit, LoyaltyStatus, RewardTier, RewardRedemption } from '../types';
-import { LOYALTY_CONFIG, REWARD_TIERS } from '../config/loyaltyConfig';
+import { Customer, Visit, LoyaltyStatus, RewardTier, RewardRedemption, LoyaltyConfig, ReviewOfferConfig } from '../types';
+import { LOYALTY_CONFIG, DEFAULT_REWARD_TIERS, DEFAULT_REVIEW_OFFER } from '../config/loyaltyConfig';
 import {
   lookupCustomerInFirestore,
   saveCustomerToFirestore,
   recordVerifiedVisitInFirestore,
   fetchCustomerVisitsFromFirestore,
+  fetchLoyaltyConfigFromFirestore,
+  saveLoyaltyConfigToFirestore,
 } from './firebaseDbService';
 
 const LOCAL_SESSION_KEY = 'mirch_customer_session_v1';
@@ -104,151 +106,44 @@ interface LocalLoyaltyDB {
  * Seed initial realistic demo accounts for instant testing of 5th, 7th, and 10th strike milestones
  */
 function getInitialSeedDB(): LocalLoyaltyDB {
-  const todayStr = getTodayKolkataDate();
-  const yesterdayStr = new Date(Date.now() - 86400000).toISOString().split('T')[0];
-  const twoDaysAgoStr = new Date(Date.now() - 172800000).toISOString().split('T')[0];
-
-  const demoCustomers: Customer[] = [
-    {
-      customerId: 'CUS-AMIT88',
-      name: 'Amit Sharma',
-      mobile: '9876543210',
-      phone: '9876543210',
-      password: 'password123',
-      restaurantId: 'mirch-masala-01',
-      createdAt: new Date(Date.now() - 30 * 86400000).toISOString(),
-      totalVisits: 4, // 4 strikes => 1 strike away from 5th strike (₹50 OFF!)
-      currentVisits: 4,
-      availableRewards: 0,
-      redeemedRewardIds: [],
-      lastVisitAt: `${yesterdayStr} 08:30 PM`,
-      isActive: true,
-      status: 'ACTIVE',
-    },
-    {
-      customerId: 'CUS-PRIYA77',
-      name: 'Priya Patel',
-      mobile: '9123456780',
-      phone: '9123456780',
-      password: 'password123',
-      restaurantId: 'mirch-masala-01',
-      createdAt: new Date(Date.now() - 40 * 86400000).toISOString(),
-      totalVisits: 6, // 6 strikes => 5th strike reward unlocked, 1 strike away from 7th strike (20% OFF!)
-      currentVisits: 6,
-      availableRewards: 1,
-      redeemedRewardIds: [],
-      lastVisitAt: `${yesterdayStr} 01:15 PM`,
-      isActive: true,
-      status: 'ACTIVE',
-    },
-    {
-      customerId: 'CUS-ROHAN99',
-      name: 'Rohan Gupta',
-      mobile: '9988776655',
-      phone: '9988776655',
-      password: 'password123',
-      restaurantId: 'mirch-masala-01',
-      createdAt: new Date(Date.now() - 60 * 86400000).toISOString(),
-      totalVisits: 9, // 9 strikes => 1 strike away from 10th strike (40% OFF / Free Dish!)
-      currentVisits: 9,
-      availableRewards: 2,
-      redeemedRewardIds: [],
-      lastVisitAt: `${twoDaysAgoStr} 09:10 PM`,
-      isActive: true,
-      status: 'ACTIVE',
-    },
-  ];
-
-  const demoVisits: Visit[] = [
-    {
-      visitId: 'VIS-INIT-01',
-      customerId: 'CUS-AMIT88',
-      restaurantId: 'mirch-masala-01',
-      visitDate: yesterdayStr,
-      visitTime: '08:30 PM',
-      verifiedBy: 'Rajesh Sharma (Owner)',
-      status: 'VERIFIED',
-    },
-    {
-      visitId: 'VIS-INIT-02',
-      customerId: 'CUS-PRIYA77',
-      restaurantId: 'mirch-masala-01',
-      visitDate: yesterdayStr,
-      visitTime: '01:15 PM',
-      verifiedBy: 'Vikram Singh (Manager)',
-      status: 'VERIFIED',
-    },
-    {
-      visitId: 'VIS-INIT-03',
-      customerId: 'CUS-ROHAN99',
-      restaurantId: 'mirch-masala-01',
-      visitDate: twoDaysAgoStr,
-      visitTime: '09:10 PM',
-      verifiedBy: 'Pooja Verma (Staff)',
-      status: 'VERIFIED',
-    },
-  ];
-
   return {
-    customers: demoCustomers,
-    visits: demoVisits,
-    redemptions: [
-      {
-        redemptionId: 'RED-8K21-A',
-        customerId: 'CUS-PRIYA77',
-        restaurantId: 'mirch-masala-01',
-        rewardName: '₹50 OFF on Order Above ₹300',
-        rewardTierId: 'tier-3',
-        redeemedAt: `${yesterdayStr} 01:25 PM`,
-        verifiedBy: 'Vikram Singh (Manager)',
-      },
-      {
-        redemptionId: 'RED-9N44-B',
-        customerId: 'CUS-ROHAN99',
-        restaurantId: 'mirch-masala-01',
-        rewardName: '20% OFF on Dining Bill',
-        rewardTierId: 'tier-6',
-        redeemedAt: `${twoDaysAgoStr} 09:30 PM`,
-        verifiedBy: 'Pooja Verma (Staff)',
-      },
-      {
-        redemptionId: 'RED-5M19-C',
-        customerId: 'CUS-AMIT88',
-        restaurantId: 'mirch-masala-01',
-        rewardName: 'Special Complimentary Dessert',
-        rewardTierId: 'tier-welcome',
-        redeemedAt: `${yesterdayStr} 08:50 PM`,
-        verifiedBy: 'Rajesh Sharma (Owner)',
-      },
-    ],
+    customers: [],
+    visits: [],
+    redemptions: [],
   };
 }
 
 function getLocalDB(): LocalLoyaltyDB {
   if (typeof window === 'undefined' || !window.localStorage) {
-    return getInitialSeedDB();
+    return { customers: [], visits: [], redemptions: [] };
   }
   try {
     const raw = localStorage.getItem(LOCAL_STORE_KEY);
     if (!raw) {
-      const initial = getInitialSeedDB();
+      const initial: LocalLoyaltyDB = { customers: [], visits: [], redemptions: [] };
       saveLocalDB(initial);
       return initial;
     }
     const parsed = JSON.parse(raw);
-    if (!parsed.customers || parsed.customers.length === 0) {
-      const initial = getInitialSeedDB();
-      saveLocalDB(initial);
-      return initial;
-    }
-    // Ensure redemptions array exists and has demo entries if empty
-    if (!parsed.redemptions || parsed.redemptions.length === 0) {
-      parsed.redemptions = getInitialSeedDB().redemptions;
-      saveLocalDB(parsed);
-    }
-    return parsed;
+    const fakeIds = new Set(['CUS-AMIT88', 'CUS-PRIYA77', 'CUS-ROHAN99', 'CUS-A89F12', 'CUS-B72D45', 'CUS-C33E98']);
+    const cleanCustomers = (parsed.customers || []).filter(
+      (c: any) => c && !fakeIds.has(c.customerId) && !c.name?.toLowerCase().includes('amit sharma') && !c.name?.toLowerCase().includes('priya patel')
+    );
+    const cleanVisits = (parsed.visits || []).filter(
+      (v: any) => v && !fakeIds.has(v.customerId)
+    );
+    const cleanRedemptions = (parsed.redemptions || []).filter(
+      (r: any) => r && !fakeIds.has(r.customerId)
+    );
+    const cleanDB: LocalLoyaltyDB = {
+      customers: cleanCustomers,
+      visits: cleanVisits,
+      redemptions: cleanRedemptions,
+    };
+    saveLocalDB(cleanDB);
+    return cleanDB;
   } catch {
-    return getInitialSeedDB();
+    return { customers: [], visits: [], redemptions: [] };
   }
 }
 
@@ -261,18 +156,100 @@ function saveLocalDB(db: LocalLoyaltyDB) {
   }
 }
 
+const LOCAL_LOYALTY_CONFIG_KEY = 'mirch_custom_loyalty_config_v1';
+
+let inMemoryLoyaltyConfig: LoyaltyConfig | null = null;
+
 /**
- * Calculates current 10-strike ladder, unlocked rewards, next milestone, and today's visit status
+ * Returns active loyalty configuration (customized by Admin/Owner or default).
+ * Checks memory, then localStorage, then LOYALTY_CONFIG fallback.
  */
-export function computeLoyaltyObject(customer: Customer, visits: Visit[]): LoyaltyStatus {
-  const visitsRequired = LOYALTY_CONFIG.visitsRequired || 10;
+export function getActiveLoyaltyConfig(): LoyaltyConfig {
+  if (inMemoryLoyaltyConfig) {
+    return inMemoryLoyaltyConfig;
+  }
+
+  if (typeof window !== 'undefined' && window.localStorage) {
+    try {
+      const stored = localStorage.getItem(LOCAL_LOYALTY_CONFIG_KEY);
+      if (stored) {
+        const parsed = JSON.parse(stored) as LoyaltyConfig;
+        if (parsed && Array.isArray(parsed.rewardTiers) && parsed.rewardTiers.length > 0) {
+          inMemoryLoyaltyConfig = parsed;
+          return parsed;
+        }
+      }
+    } catch {
+      // Ignore parse errors
+    }
+  }
+
+  inMemoryLoyaltyConfig = LOYALTY_CONFIG;
+  return LOYALTY_CONFIG;
+}
+
+/**
+ * Fetches latest loyalty configuration from Cloud Firestore and caches locally.
+ */
+export async function loadLoyaltyConfigFromFirestore(): Promise<LoyaltyConfig> {
+  try {
+    const cloudConfig = await fetchLoyaltyConfigFromFirestore();
+    if (cloudConfig) {
+      inMemoryLoyaltyConfig = cloudConfig;
+      if (typeof window !== 'undefined' && window.localStorage) {
+        localStorage.setItem(LOCAL_LOYALTY_CONFIG_KEY, JSON.stringify(cloudConfig));
+      }
+      return cloudConfig;
+    }
+  } catch (err) {
+    console.warn('[LoyaltyService] Load loyalty config error:', err);
+  }
+  return getActiveLoyaltyConfig();
+}
+
+/**
+ * Updates loyalty configuration (e.g. customized 10, 20, 30 strikes, discounts, free cold drink)
+ * Saves to both Cloud Firestore and local storage.
+ */
+export async function updateCustomLoyaltyConfig(newConfig: LoyaltyConfig): Promise<boolean> {
+  inMemoryLoyaltyConfig = newConfig;
+  if (typeof window !== 'undefined' && window.localStorage) {
+    try {
+      localStorage.setItem(LOCAL_LOYALTY_CONFIG_KEY, JSON.stringify(newConfig));
+    } catch {
+      // Ignore
+    }
+  }
+
+  // Persist to Cloud Firestore
+  return await saveLoyaltyConfigToFirestore(newConfig);
+}
+
+/**
+ * Calculates current strikes ladder, unlocked rewards, next milestone, and today's visit status.
+ * Dynamically supports any strike milestones (e.g. 10, 20, 30 strikes, or any custom strike numbers).
+ */
+export function computeLoyaltyObject(
+  customer: Customer,
+  visits: Visit[],
+  configOverride?: LoyaltyConfig
+): LoyaltyStatus {
+  const activeConfig = configOverride || getActiveLoyaltyConfig();
+  const tiers = (activeConfig.rewardTiers && activeConfig.rewardTiers.length > 0)
+    ? activeConfig.rewardTiers.filter(t => t.isActive !== false)
+    : DEFAULT_REWARD_TIERS;
+
+  // Find max strike milestone among active tiers
+  const maxTierStrike = tiers.reduce((max, t) => Math.max(max, t.strike), 10);
+  const visitsRequired = Math.max(activeConfig.visitsRequired || 10, maxTierStrike);
   const totalVisits = customer.totalVisits || 0;
 
-  // Current progress in the 10-strike cycle (0 to 10)
-  const currentCycleStrikes = totalVisits === 0 ? 0 : (totalVisits % visitsRequired === 0 ? visitsRequired : totalVisits % visitsRequired);
+  // Current progress in the strike cycle (0 to visitsRequired)
+  const currentCycleStrikes = totalVisits === 0
+    ? 0
+    : (totalVisits % visitsRequired === 0 ? visitsRequired : totalVisits % visitsRequired);
 
   const redeemed = customer.redeemedRewardIds || [];
-  const tiers = LOYALTY_CONFIG.rewardTiers;
 
   // Evaluate unlocked tiers
   const unlockedTiers: RewardTier[] = [];
@@ -284,10 +261,13 @@ export function computeLoyaltyObject(customer: Customer, visits: Visit[]): Loyal
     }
   }
 
+  // Sort tiers ascending by strike
+  const sortedTiers = [...tiers].sort((a, b) => a.strike - b.strike);
+
   // Determine next reward tier
   let nextRewardTier: RewardTier | null = null;
   let remainingForNextReward = 0;
-  for (const tier of tiers) {
+  for (const tier of sortedTiers) {
     if (currentCycleStrikes < tier.strike) {
       nextRewardTier = tier;
       remainingForNextReward = tier.strike - currentCycleStrikes;
@@ -296,9 +276,9 @@ export function computeLoyaltyObject(customer: Customer, visits: Visit[]): Loyal
   }
 
   // If already reached all tiers in current cycle, wrap to first tier of next cycle
-  if (!nextRewardTier && tiers.length > 0) {
-    nextRewardTier = tiers[0];
-    remainingForNextReward = (visitsRequired - currentCycleStrikes) + tiers[0].strike;
+  if (!nextRewardTier && sortedTiers.length > 0) {
+    nextRewardTier = sortedTiers[0];
+    remainingForNextReward = (visitsRequired - currentCycleStrikes) + sortedTiers[0].strike;
   }
 
   const todayStr = getTodayKolkataDate();
@@ -327,11 +307,11 @@ export function computeLoyaltyObject(customer: Customer, visits: Visit[]): Loyal
     nextRewardTier,
     remainingForNextReward,
     isRewardUnlocked: unlockedTiers.length > 0,
-    rewardName: LOYALTY_CONFIG.rewardName,
-    rewardDescription: LOYALTY_CONFIG.rewardDescription,
+    rewardName: activeConfig.rewardName || 'Dining Strikes Milestone Rewards',
+    rewardDescription: activeConfig.rewardDescription || 'Milestone perks for loyal diners',
     todayVisitStatus: todayStatus,
     lastVisitDateFormatted: customer.lastVisitAt || undefined,
-    config: LOYALTY_CONFIG,
+    config: activeConfig,
   };
 }
 
@@ -867,8 +847,7 @@ export async function redeemCustomerReward(
  * Get demo preset customer list for quick testing
  */
 export function getDemoCustomers(): Customer[] {
-  const db = getLocalDB();
-  return db.customers;
+  return [];
 }
 
 /**

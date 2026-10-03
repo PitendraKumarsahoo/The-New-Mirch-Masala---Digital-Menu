@@ -24,6 +24,10 @@ import { ActivityLog } from './ActivityLog';
 import { PastOrdersTab } from './PastOrdersTab';
 import { OrderHistory } from './OrderHistory';
 import { usePlacedOrders } from '../../services/orderHistoryService';
+import { auth } from '../../config/firebase';
+import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
+import { signInWithGoogle, signOutCustomer } from '../../services/firebaseAuthService';
+import { GoogleIcon } from '../icons/GoogleIcon';
 import {
   ChevronLeft,
   Heart,
@@ -71,6 +75,16 @@ export const CustomerProfilePage: React.FC<CustomerProfilePageProps> = ({
   // Placed orders hook for counts
   const { orders: placedOrders, activeOrders } = usePlacedOrders();
 
+  // Firebase Auth State for Client Customer
+  const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(() => auth.currentUser);
+
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, (user) => {
+      setCurrentUser(user);
+    });
+    return () => unsub();
+  }, []);
+
   // Quick Auth Modal State
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
@@ -79,8 +93,6 @@ export const CustomerProfilePage: React.FC<CustomerProfilePageProps> = ({
   const [authPassword, setAuthPassword] = useState('');
   const [authError, setAuthError] = useState<string | null>(null);
   const [authLoading, setAuthLoading] = useState(false);
-
-  const demoCustomers = getDemoCustomers();
 
   // Load customer session on mount
   const loadActiveCustomer = useCallback(async () => {
@@ -115,26 +127,35 @@ export const CustomerProfilePage: React.FC<CustomerProfilePageProps> = ({
     setSpecialInstructions,
   } = useCustomerPreferences(customer?.customerId);
 
+  const handleGoogleSignIn = async () => {
+    setAuthLoading(true);
+    setAuthError(null);
+    try {
+      const res = await signInWithGoogle();
+      if (res.success && res.user) {
+        setCurrentUser(res.user);
+        setIsAuthModalOpen(false);
+      } else if (res.error) {
+        setAuthError(res.error);
+      }
+    } catch (err: any) {
+      setAuthError(err?.message || 'Google sign-in failed.');
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const handleGoogleSignOut = async () => {
+    await signOutCustomer();
+    setCurrentUser(null);
+    handleLogout();
+  };
+
   const handleLogout = () => {
     clearCustomerSession();
     setCustomer(null);
     setLoyalty(null);
     setVisits([]);
-  };
-
-  const handleSelectDemoCustomer = async (demo: Customer) => {
-    saveCustomerSession({
-      customerId: demo.customerId,
-      phone: demo.phone || demo.mobile,
-      name: demo.name,
-      restaurantId: demo.restaurantId || 'mirch-masala-01',
-    });
-    setCustomer(demo);
-    const res = await getLoyaltyStatus(demo.customerId, demo.phone, demo.restaurantId);
-    if (res.success) {
-      setLoyalty(res.loyalty || null);
-      setVisits(res.recentVisits || []);
-    }
   };
 
   const handleAuthSubmit = async (e: React.FormEvent) => {
@@ -209,13 +230,13 @@ export const CustomerProfilePage: React.FC<CustomerProfilePageProps> = ({
         <ProfileAccountCard
           customer={customer}
           loyalty={loyalty}
-          onLogout={handleLogout}
+          currentUser={currentUser}
+          onLogout={handleGoogleSignOut}
           onOpenLoginModal={() => {
             setAuthError(null);
             setIsAuthModalOpen(true);
           }}
-          onSelectDemoCustomer={handleSelectDemoCustomer}
-          demoCustomers={demoCustomers}
+          onGoogleSignIn={handleGoogleSignIn}
         />
 
         {/* 4-Section Navigation Segment */}
@@ -457,7 +478,6 @@ export const CustomerProfilePage: React.FC<CustomerProfilePageProps> = ({
               activeFilter={activityFilter}
               onFilterChange={setActivityFilter}
               onGoToRewards={() => onNavigateToTab('rewards')}
-              onSelectDemoCustomer={handleSelectDemoCustomer}
               onOpenLoginModal={() => {
                 setAuthError(null);
                 setIsAuthModalOpen(true);
@@ -490,6 +510,26 @@ export const CustomerProfilePage: React.FC<CustomerProfilePageProps> = ({
               >
                 <X className="w-5 h-5" />
               </button>
+            </div>
+
+            {/* 1-Tap Google Sign-In */}
+            <div className="mb-4">
+              <button
+                type="button"
+                id="modal-google-signin-btn"
+                onClick={handleGoogleSignIn}
+                disabled={authLoading}
+                className="w-full py-2.5 px-3 bg-white hover:bg-stone-50 active:scale-[0.98] border border-stone-200 rounded-xl font-bold text-stone-800 text-xs flex items-center justify-center gap-2.5 shadow-2xs transition-all cursor-pointer disabled:opacity-50"
+              >
+                <GoogleIcon className="w-4 h-4 shrink-0" />
+                <span>Continue with Google</span>
+              </button>
+              <div className="relative flex items-center justify-center my-3">
+                <div className="border-t border-stone-200/80 w-full" />
+                <span className="bg-white px-2 text-[10px] font-bold text-stone-400 uppercase tracking-wider absolute">
+                  or sign in with mobile
+                </span>
+              </div>
             </div>
 
             {/* Sub-tab toggle */}
